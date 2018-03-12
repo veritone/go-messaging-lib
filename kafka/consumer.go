@@ -49,8 +49,10 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 	if !ok {
 		return nil, errors.New("invalid option creator")
 	}
-	if err := c.SetOffset(options.Offset); err != nil {
-		return nil, errors.New("unable to set offset")
+	if len(c.Config().GroupID) > 0 {
+		if err := c.SetOffset(options.Offset); err != nil {
+			return nil, errors.New("unable to set offset")
+		}
 	}
 	message := make(chan interface{}, 1)
 	go func() {
