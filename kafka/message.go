@@ -9,6 +9,12 @@ import (
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
+// OffsetOldest lets consumers to retrieve the oldest possible message
+const OffsetOldest = -1
+
+// OffsetNewest lets consumers to retrieve the newest possible message
+const OffsetNewest = -2
+
 type messager struct {
 	message *gKafka.Message
 }
@@ -49,13 +55,13 @@ func getBytes(payload interface{}) ([]byte, error) {
 }
 
 type consumerOptions struct {
-	Partition int32
-	Offset    int64
+	Offset int64
 }
 
-// NewConsumerOption specifies consumer policies
-func NewConsumerOption(partition int32, offset int64) messaging.OptionCreator {
-	return &consumerOptions{partition, offset}
+// NewConsumerOption specifies consumer policies. Pass in either OffsetOldest, OffsetNewest,
+// or specific offset that you want to consumer from
+func NewConsumerOption(offset int64) messaging.OptionCreator {
+	return &consumerOptions{offset}
 }
 
 // ConsumerGroupOption is the default for Consumer Group. In this configuration,

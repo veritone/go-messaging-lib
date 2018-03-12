@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -17,7 +18,8 @@ type consumer struct {
 	errors chan error
 }
 
-// Consumer initializes a default consumer client for consuming messages
+// Consumer initializes a default consumer client for consuming messages.
+// This function uses consumer group and all paritions will be load balanced
 func Consumer(topic, groupID string, brokers ...string) messaging.Consumer {
 	r := gKafka.NewReader(gKafka.ReaderConfig{
 		Brokers: brokers,
@@ -27,12 +29,29 @@ func Consumer(topic, groupID string, brokers ...string) messaging.Consumer {
 	return &consumer{r, new(sync.Mutex), make(chan error)}
 }
 
+// ConsumerFromParition initializes a default consumer client for consuming messages
+func ConsumerFromParition(topic string, parition int, brokers ...string) messaging.Consumer {
+	r := gKafka.NewReader(gKafka.ReaderConfig{
+		Brokers:   brokers,
+		Partition: parition,
+		Topic:     topic,
+	})
+	return &consumer{r, new(sync.Mutex), make(chan error)}
+}
+
 // NewConsumer initializes a consumer client with configurations
 func NewConsumer(config *gKafka.ReaderConfig) messaging.Consumer {
 	return &consumer{gKafka.NewReader(*config), new(sync.Mutex), make(chan error)}
 }
 
-func (c *consumer) Consume(ctx context.Context, _ messaging.OptionCreator) (<-chan interface{}, error) {
+func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-chan interface{}, error) {
+	options, ok := ops.Options().(*consumerOptions)
+	if !ok {
+		return nil, errors.New("invalid option creator")
+	}
+	if err := c.SetOffset(options.Offset); err != nil {
+		return nil, errors.New("unable to set offset")
+	}
 	message := make(chan interface{}, 1)
 	go func() {
 		for {
