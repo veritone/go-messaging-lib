@@ -1,0 +1,72 @@
+package kafka
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/davecgh/go-spew/spew"
+
+	"github.com/Shopify/sarama"
+	messaging "github.com/veritone/go-messaging-lib"
+)
+
+type producer struct {
+	sarama.Client
+	asyncProducer sarama.AsyncProducer
+	config        *sarama.Config
+	*sync.Mutex
+}
+
+// NewProducer initializes a new client for publishing messages
+func NewProducer(config *sarama.Config, brokers ...string) (messaging.Producer, error) {
+	client, err := sarama.NewClient(brokers, config)
+	if err != nil {
+		return nil, err
+	}
+	asyncProducer, err := sarama.NewAsyncProducerFromClient(client)
+	if err != nil {
+		return nil, err
+	}
+	return &producer{client, asyncProducer, config, new(sync.Mutex)}, nil
+}
+
+func (p *producer) Produce(_ context.Context, msg messaging.Messager) error {
+	kafkaMsg, ok := msg.Message().(*sarama.ProducerMessage)
+	if !ok {
+		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
+	}
+	var err error
+	p.asyncProducer.Input() <- kafkaMsg
+	select {
+	case <-p.asyncProducer.Successes():
+		break
+	case err = <-p.asyncProducer.Errors():
+		break
+	}
+	return err
+}
+
+func (p *producer) Close() error {
+	p.Lock()
+	defer p.Unlock()
+	if p.Closed() {
+		return nil
+	}
+	var errorStrs []string
+	if err := p.asyncProducer.Close(); err != nil {
+		errorStrs = append(errorStrs, err.Error())
+	}
+	if err := p.Client.Close(); err != nil {
+		errorStrs = append(errorStrs, err.Error())
+	}
+
+	if len(errorStrs) > 0 {
+		return fmt.Errorf(
+			"(%d) errors while producing: %s",
+			len(errorStrs),
+			strings.Join(errorStrs, "\n"))
+	}
+	return nil
+}
