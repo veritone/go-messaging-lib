@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 
 	"flag"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
@@ -45,7 +45,6 @@ func main() {
 	http.HandleFunc("/pub", kafkaMiddleware(pub))
 	http.HandleFunc("/sub", kafkaMiddleware(sub))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
-	http.HandleFunc("/bench-sub", kafkaMiddleware(benchSub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
 	http.Handle("/metrics", promhttp.Handler())
 	log.Panic(http.ListenAndServe(":"+*portPtr, nil))
@@ -91,7 +90,8 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 
 	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
 	var wg sync.WaitGroup
-	for i := 0; i < 1; i++ {
+	// Typical 4 core machine
+	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			asyncProduce(producer, duration)
@@ -107,65 +107,43 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 
 func asyncProduce(producer messaging.Producer, duration time.Duration) {
 	timer := time.NewTimer(duration)
-	ticker := time.NewTicker(time.Millisecond * 500)
-	fakeMsg := make([]byte, 10)
+	//ticker := time.NewTicker(time.Millisecond * 500)
+	fakeMsg := make([]byte, 1e3) // 1KB
+	var msg messaging.Messager
+	var e error
+	msg, e = kafka.NewMessage(
+		"",
+		fakeMsg)
+	if e != nil {
+		log.Panic(e)
+	}
 ProducerLoop:
 	for {
 		select {
-		case <-ticker.C:
-			var msg messaging.Messager
-			var e error
-			msg, e = kafka.NewMessage(
-				"",
-				fakeMsg)
-			if e != nil {
-				log.Panic(e)
-			}
+		// case <-ticker.C:
+		// 	var msg messaging.Messager
+		// 	var e error
+		// 	msg, e = kafka.NewMessage(
+		// 		"",
+		// 		fakeMsg)
+		// 	if e != nil {
+		// 		log.Panic(e)
+		// 	}
+		// 	e = producer.Produce(context.Background(), msg)
+		// 	if e != nil {
+		// 		log.Panic(e)
+		// 	}
+		case <-timer.C:
+			break ProducerLoop
+		default:
 			e = producer.Produce(context.Background(), msg)
 			if e != nil {
 				log.Panic(e)
 			}
-		case <-timer.C:
-			break ProducerLoop
-			// default:
-			// 	var msg messaging.Messager
-			// 	var e error
-			// 	msg, e = kafka.NewMessage(
-			// 		"",
-			// 		fakeMsg)
-			// 	if e != nil {
-			// 		log.Panic(e)
-			// 	}
-			// 	e = producer.Produce(context.Background(), msg)
-			// 	if e != nil {
-			// 		log.Panic(e)
-			// 	}
+			log.Println("sent " + time.Now().String())
 		}
 	}
 	err := producer.Close()
-	if err != nil {
-		log.Panic(err)
-	}
-}
-
-func benchSub(rw http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	topic := q.Get("topic")
-
-	consumer := kafka.Consumer(topic, "", "kafka1:9092")
-	consumers = append(consumers, consumer)
-	queue, err := consumer.Consume(context.TODO(), kafka.ConsumerGroupOption)
-	if err != nil {
-		log.Panic(err)
-	}
-	for item := range queue {
-		_, ok := item.(*kafkaGo.Message)
-		if !ok {
-			spew.Dump(item)
-			// If not your type, either ignore or forward to another queue
-		}
-	}
-	_, err = rw.Write([]byte("started a bench-consumer"))
 	if err != nil {
 		log.Panic(err)
 	}
@@ -195,16 +173,34 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// sub subscribes to a topic and optionally consumer group
 func sub(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	topic := q.Get("topic")
+	partition := q.Get("partition")
 	group := q.Get("group")
-	consumer := kafka.Consumer(topic, group, "kafka1:9092")
-	consumers = append(consumers, consumer)
-	queue, err := consumer.Consume(context.TODO(), kafka.ConsumerGroupOption)
-	if err != nil {
-		log.Panic(err)
+	var (
+		consumer messaging.Consumer
+		err      error
+		queue    <-chan interface{}
+	)
+	if len(group) == 0 {
+		p, _ := strconv.Atoi(partition)
+		consumer = kafka.ConsumerFromParition(topic, p, "kafka1:9092")
+		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetNewest))
+		if err != nil {
+			log.Panic(err)
+		}
+		log.Printf("consuming from partition %d\n", p)
+	} else {
+		consumer = kafka.Consumer(topic, group, "kafka1:9092")
+		queue, err = consumer.Consume(context.TODO(), kafka.ConsumerGroupOption)
+		if err != nil {
+			log.Panic(err)
+		}
+		log.Printf("consuming from group %s\n", group)
 	}
+	consumers = append(consumers, consumer)
 	_, err = rw.Write([]byte("started a consumer"))
 	if err != nil {
 		log.Panic(err)
@@ -212,13 +208,12 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	for item := range queue {
 		v, ok := item.(*kafkaGo.Message)
 		if ok {
-			log.Printf("ok: (%d) (%s) (%s)\n", v.Offset, v.Value, v.Time)
+			log.Printf("ok: (%d) (%s) (%s)\n", v.Offset, v.Value, v.Time.String())
 		} else {
 			log.Println("NOT OK")
 			// spew.Dump(item)
 			// If not your type, either ignore or forward to another queue
 		}
-		time.Sleep(time.Second)
 	}
 }
 

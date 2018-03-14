@@ -44,6 +44,8 @@ func Producer(topic string, strategy Strategy, brokers ...string) messaging.Prod
 		Brokers:  brokers,
 		Topic:    topic,
 		Balancer: balancer,
+		// For simple use cases, we send one message per request
+		BatchSize: 1,
 	})
 	return &producer{w, new(sync.Mutex)}
 }

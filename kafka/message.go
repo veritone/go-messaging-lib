@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"time"
 
 	gKafka "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
@@ -40,6 +41,7 @@ func NewMessage(key string, payload interface{}) (messaging.Messager, error) {
 		}
 	}
 	return &messager{&gKafka.Message{
+		Time:  time.Now(),
 		Key:   []byte(key),
 		Value: msg,
 	}}, nil
