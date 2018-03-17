@@ -49,7 +49,8 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 	if !ok {
 		return nil, errors.New("invalid option creator")
 	}
-	if len(c.Config().GroupID) > 0 {
+	// Only set offset when consuming from partition directly
+	if len(c.Config().GroupID) == 0 {
 		if err := c.SetOffset(options.Offset); err != nil {
 			return nil, errors.New("unable to set offset")
 		}
