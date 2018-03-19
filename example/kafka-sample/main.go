@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	_ "net/http/pprof"
-
 	"flag"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
