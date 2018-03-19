@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"flag"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
@@ -42,6 +44,7 @@ func main() {
 	http.HandleFunc("/", intro)
 	http.HandleFunc("/pub", kafkaMiddleware(pub))
 	http.HandleFunc("/sub", kafkaMiddleware(sub))
+	http.HandleFunc("/topics", kafkaMiddleware(list))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
 	http.Handle("/metrics", promhttp.Handler())
@@ -63,7 +66,7 @@ func kafkaMiddleware(f http.HandlerFunc) http.HandlerFunc {
 		kafkaHost := q.Get("kafka_host")
 		kafkaPort := q.Get("kafka_port")
 		if len(kafkaHost) == 0 {
-			q.Set("kafka_host", "localhost")
+			q.Set("kafka_host", "kafka1")
 		}
 		if len(kafkaPort) == 0 {
 			q.Set("kafka_port", "9092")
@@ -212,6 +215,42 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 			// spew.Dump(item)
 			// If not your type, either ignore or forward to another queue
 		}
+	}
+}
+
+// list topics and metadata
+func list(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
+	spew.Dump(host, port)
+	manager, err := kafka.Manager(host + ":" + port)
+	if err != nil {
+		log.Panic(err)
+	}
+	data, err := manager.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	if err = manager.Close(); err != nil {
+		log.Panic(err)
+	}
+
+	// the library exposes ListTopicsResponse type for casting
+	if v, ok := data.(kafka.ListTopicsResponse); ok {
+		log.Println("got ListTopicsResponse")
+		_ = v
+		// You can either cast it and access the data here directly e.g
+		// 	info = v[topic_name][group_name][partition_number]
+		// or just dump it as json like below
+	}
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Panic(err)
+	}
+	_, err = rw.Write(jsonData)
+	if err != nil {
+		log.Panic(err)
 	}
 }
 
