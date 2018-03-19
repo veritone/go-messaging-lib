@@ -2,8 +2,11 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 
@@ -29,6 +32,12 @@ const (
 	StrategyHash Strategy = "Hash"
 )
 
+type ctxKey int
+
+const (
+	keyRetry ctxKey = iota
+)
+
 // Producer initializes a default producer client for publishing messages
 func Producer(topic string, strategy Strategy, brokers ...string) messaging.Producer {
 	var balancer gKafka.Balancer
@@ -46,6 +55,8 @@ func Producer(topic string, strategy Strategy, brokers ...string) messaging.Prod
 		Balancer: balancer,
 		// For simple use cases, we send one message per request
 		BatchSize: 1,
+		// For producing to new topic where partitions haven't been created yet
+		RebalanceInterval: time.Second,
 	})
 	return &producer{w, new(sync.Mutex)}
 }
@@ -60,7 +71,22 @@ func (p *producer) Produce(ctx context.Context, msg messaging.Messager) error {
 	if !ok {
 		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
 	}
-	return p.WriteMessages(ctx, *kafkaMsg)
+	err := p.WriteMessages(ctx, *kafkaMsg)
+	if err != nil {
+		// unfortunately, the underlying library does not expose an error value for checking
+		// we have to match substring
+		if strings.Contains(err.Error(), "failed to find any partitions for topic") {
+			// TODO: Could use exponential backoff here
+			// Wait a second before retry one last time, it should give Kafka enough time to
+			// rebalance and create topic + partition if using Producer() constructor
+			if v := ctx.Value(keyRetry); v != nil {
+				return errors.New("failed to produce message (run out of retry attempts)")
+			}
+			time.Sleep(time.Second)
+			err = p.Produce(context.WithValue(ctx, keyRetry, true), msg)
+		}
+	}
+	return err
 }
 
 func (p *producer) Close() error {

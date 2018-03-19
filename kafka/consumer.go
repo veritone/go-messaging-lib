@@ -25,6 +25,8 @@ func Consumer(topic, groupID string, brokers ...string) messaging.Consumer {
 		Brokers: brokers,
 		GroupID: groupID,
 		Topic:   topic,
+		// Make it synchronous for basic usage
+		CommitInterval: 0,
 	})
 	return &consumer{r, new(sync.Mutex), make(chan error)}
 }
@@ -47,7 +49,7 @@ func NewConsumer(config *gKafka.ReaderConfig) messaging.Consumer {
 func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-chan interface{}, error) {
 	options, ok := ops.Options().(*consumerOptions)
 	if !ok {
-		return nil, errors.New("invalid option creator")
+		return nil, errors.New("invalid option creator, did you use NewConsumerOption or ConsumerGroupOption?")
 	}
 	// Only set offset when consuming from partition directly
 	if len(c.Config().GroupID) == 0 {
@@ -62,7 +64,7 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 			case <-ctx.Done():
 				return
 			default:
-				m, err := c.ReadMessage(ctx)
+				m, err := c.FetchMessage(ctx)
 				if err != nil {
 					// EOF returns when the client calls Close()
 					if err != io.EOF {
@@ -73,6 +75,10 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 					return
 				}
 				message <- &m
+				if err := c.CommitMessages(ctx, m); err != nil {
+					close(c.errors)
+					close(message)
+				}
 			}
 		}
 	}()
