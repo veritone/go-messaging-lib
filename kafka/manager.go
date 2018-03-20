@@ -140,7 +140,7 @@ type PartitionInfo struct {
 	Lag    int64
 }
 
-func (m *manager) CreateTopic(_ context.Context, topics ...string) error {
+func (m *manager) CreateTopics(_ context.Context, topics ...string) error {
 	brokers := m.multi.Client.Brokers()
 	if len(brokers) == 0 {
 		return errors.New("cannot find any broker to create topic")
@@ -166,7 +166,7 @@ func (m *manager) CreateTopic(_ context.Context, topics ...string) error {
 	}
 	return nil
 }
-func (m *manager) DeleteTopic(_ context.Context, topics ...string) error {
+func (m *manager) DeleteTopics(_ context.Context, topics ...string) error {
 	return errors.New("not yet implemented")
 }
 

@@ -8,8 +8,8 @@ import (
 // Manager provides basic administrative functions for the messaging system
 type Manager interface {
 	ListTopics(context.Context) (interface{}, error)
-	CreateTopic(context.Context, ...string) error
-	DeleteTopic(context.Context, ...string) error
+	CreateTopics(context.Context, ...string) error
+	DeleteTopics(context.Context, ...string) error
 	io.Closer
 }
 
