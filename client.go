@@ -5,6 +5,14 @@ import (
 	"io"
 )
 
+// Manager provides basic administrative functions for the messaging system
+type Manager interface {
+	ListTopics(context.Context) (interface{}, error)
+	CreateTopic(context.Context, ...string) error
+	DeleteTopic(context.Context, ...string) error
+	io.Closer
+}
+
 // Producer defines functions of a producer/publisher
 type Producer interface {
 	Produce(context.Context, Messager) error

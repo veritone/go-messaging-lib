@@ -2,3 +2,5 @@
 .vscode/
 idea/
 .kafka-*/
+
+.DS_Store
