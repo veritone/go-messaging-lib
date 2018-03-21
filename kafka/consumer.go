@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	gKafka "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
@@ -27,6 +28,8 @@ func Consumer(topic, groupID string, brokers ...string) messaging.Consumer {
 		Topic:   topic,
 		// Make it synchronous for basic usage
 		CommitInterval: 0,
+		// Low latency for basic usage
+		MaxWait: time.Millisecond * 100,
 	})
 	return &consumer{r, new(sync.Mutex), make(chan error)}
 }
@@ -37,6 +40,8 @@ func ConsumerFromParition(topic string, parition int, brokers ...string) messagi
 		Brokers:   brokers,
 		Partition: parition,
 		Topic:     topic,
+		// Low latency for basic usage
+		MaxWait: time.Millisecond * 100,
 	})
 	return &consumer{r, new(sync.Mutex), make(chan error)}
 }
@@ -64,7 +69,7 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 			case <-ctx.Done():
 				return
 			default:
-				m, err := c.FetchMessage(ctx)
+				m, err := c.ReadMessage(ctx)
 				if err != nil {
 					// EOF returns when the client calls Close()
 					if err != io.EOF {
@@ -75,10 +80,6 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 					return
 				}
 				message <- &m
-				if err := c.CommitMessages(ctx, m); err != nil {
-					close(c.errors)
-					close(message)
-				}
 			}
 		}
 	}()
