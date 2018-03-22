@@ -3,6 +3,4 @@
 idea/
 .kafka-*/
 .DS_Store
-edge-messages/vendor/
-edge-messages/example/example
 example/kafka-sample/vendor/
