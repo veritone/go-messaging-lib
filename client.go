@@ -8,7 +8,7 @@ import (
 // Manager provides basic administrative functions for the messaging system
 type Manager interface {
 	ListTopics(context.Context) (interface{}, error)
-	CreateTopics(context.Context, ...string) error
+	CreateTopics(context.Context, OptionCreator, ...string) error
 	DeleteTopics(context.Context, ...string) error
 	io.Closer
 }
@@ -24,9 +24,15 @@ type Messager interface {
 	Message() interface{}
 }
 
+type Event interface {
+	Payload() []byte
+	Metadata() map[string]interface{}
+	Raw() interface{}
+}
+
 // Consumer defines functions of a consumer/subscriber
 type Consumer interface {
-	Consume(context.Context, OptionCreator) (<-chan interface{}, error)
+	Consume(context.Context, OptionCreator) (<-chan Event, error)
 	io.Closer
 }
 
