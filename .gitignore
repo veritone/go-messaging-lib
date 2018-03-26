@@ -1,6 +1,15 @@
-**/full-stack
-.vscode/
-idea/
-.kafka-*/
+# OS Files
 .DS_Store
-example/kafka-sample/vendor/
+
+# Visual Code IDE
+.vscode/
+
+# IntelliJ IDE
+idea/
+
+# Dep & Govend
+/vendor
+
+# testing 
+**/full-stack
+.kafka-*/
