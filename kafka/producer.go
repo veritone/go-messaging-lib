@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-
 	gKafka "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
 )
@@ -20,6 +19,7 @@ type Strategy string
 type producer struct {
 	*gKafka.Writer
 	*sync.Mutex
+	statsUpdater *time.Ticker
 }
 
 const (
@@ -28,7 +28,7 @@ const (
 	// StrategyLeastBytes distributes writes to nodes with least amount of traffic
 	StrategyLeastBytes Strategy = "LeastBytes"
 	// StrategyHash distributes writes based on 32-bit FNV-1 Hash function. This
-	// guarantees messages with the same key are route to the same host
+	// guarantees messages with the same key are routed to the same host
 	StrategyHash Strategy = "Hash"
 )
 
@@ -58,12 +58,15 @@ func Producer(topic string, strategy Strategy, brokers ...string) messaging.Prod
 		// For producing to new topic where partitions haven't been created yet
 		RebalanceInterval: time.Second,
 	})
-	return &producer{w, new(sync.Mutex)}
+	t := monitorProducer(w, time.Second)
+	return &producer{w, new(sync.Mutex), t}
 }
 
 // NewProducer initializes a new client for publishing messages
 func NewProducer(config *gKafka.WriterConfig) messaging.Producer {
-	return &producer{gKafka.NewWriter(*config), new(sync.Mutex)}
+	w := gKafka.NewWriter(*config)
+	t := monitorProducer(w, time.Second)
+	return &producer{w, new(sync.Mutex), t}
 }
 
 func (p *producer) Produce(ctx context.Context, msg messaging.Messager) error {
@@ -92,5 +95,6 @@ func (p *producer) Produce(ctx context.Context, msg messaging.Messager) error {
 func (p *producer) Close() error {
 	p.Lock()
 	defer p.Unlock()
+	p.statsUpdater.Stop()
 	return p.Writer.Close()
 }

@@ -16,7 +16,8 @@ import (
 type consumer struct {
 	*gKafka.Reader
 	*sync.Mutex
-	errors chan error
+	errors       chan error
+	statsUpdater *time.Ticker
 }
 
 // Consumer initializes a default consumer client for consuming messages.
@@ -31,7 +32,8 @@ func Consumer(topic, groupID string, brokers ...string) messaging.Consumer {
 		// Low latency for basic usage
 		MaxWait: time.Millisecond * 100,
 	})
-	return &consumer{r, new(sync.Mutex), make(chan error)}
+	t := monitorConsumer(r, time.Second)
+	return &consumer{r, new(sync.Mutex), make(chan error), t}
 }
 
 // ConsumerFromParition initializes a default consumer client for consuming messages
@@ -43,12 +45,15 @@ func ConsumerFromParition(topic string, parition int, brokers ...string) messagi
 		// Low latency for basic usage
 		MaxWait: time.Millisecond * 100,
 	})
-	return &consumer{r, new(sync.Mutex), make(chan error)}
+	t := monitorConsumer(r, time.Second)
+	return &consumer{r, new(sync.Mutex), make(chan error), t}
 }
 
 // NewConsumer initializes a consumer client with configurations
 func NewConsumer(config *gKafka.ReaderConfig) messaging.Consumer {
-	return &consumer{gKafka.NewReader(*config), new(sync.Mutex), make(chan error)}
+	r := gKafka.NewReader(*config)
+	t := monitorConsumer(r, time.Second)
+	return &consumer{r, new(sync.Mutex), make(chan error), t}
 }
 
 func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-chan interface{}, error) {
@@ -89,6 +94,7 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 func (c *consumer) Close() error {
 	c.Lock()
 	defer c.Unlock()
+	c.statsUpdater.Stop()
 	// accumulate all errors and report them on close
 	var errorStrs []string
 	if err := c.Reader.Close(); err != nil {

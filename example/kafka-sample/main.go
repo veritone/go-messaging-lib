@@ -80,7 +80,13 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	topic := q.Get("topic")
 	durationParam := q.Get("duration")
+	rateParam := q.Get("rate")
+	threadCountParam := q.Get("thread")
+
+	// Default values
 	duration := time.Second * 60
+	threadCount := 4 // Typical 4 core machine
+	rate := time.Millisecond
 
 	if len(durationParam) > 0 {
 		parsedDuration, err := time.ParseDuration(durationParam)
@@ -89,26 +95,38 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if len(rateParam) > 0 {
+		parsedDuration, err := time.ParseDuration(rateParam)
+		if err == nil {
+			rate = parsedDuration
+		}
+	}
+
+	parsedCC, err := strconv.Atoi(threadCountParam)
+	if err == nil && parsedCC > 0 {
+		threadCount = parsedCC
+	}
+
 	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
 	var wg sync.WaitGroup
-	// Typical 4 core machine
-	for i := 0; i < 4; i++ {
+
+	for i := 0; i < threadCount; i++ {
 		wg.Add(1)
 		go func() {
-			asyncProduce(producer, duration)
+			asyncProduce(producer, duration, rate)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
-	_, err := rw.Write([]byte("OK"))
+	_, err = rw.Write([]byte("OK"))
 	if err != nil {
 		log.Panic(err)
 	}
 }
 
-func asyncProduce(producer messaging.Producer, duration time.Duration) {
+func asyncProduce(producer messaging.Producer, duration, rate time.Duration) {
 	timer := time.NewTimer(duration)
-	//ticker := time.NewTicker(time.Millisecond * 500)
+	ticker := time.NewTicker(rate)
 	fakeMsg := make([]byte, 1e3) // 1KB
 	var msg messaging.Messager
 	var e error
@@ -121,27 +139,14 @@ func asyncProduce(producer messaging.Producer, duration time.Duration) {
 ProducerLoop:
 	for {
 		select {
-		// case <-ticker.C:
-		// 	var msg messaging.Messager
-		// 	var e error
-		// 	msg, e = kafka.NewMessage(
-		// 		"",
-		// 		fakeMsg)
-		// 	if e != nil {
-		// 		log.Panic(e)
-		// 	}
-		// 	e = producer.Produce(context.Background(), msg)
-		// 	if e != nil {
-		// 		log.Panic(e)
-		// 	}
-		case <-timer.C:
-			break ProducerLoop
-		default:
+		case <-ticker.C:
 			e = producer.Produce(context.Background(), msg)
 			if e != nil {
 				log.Panic(e)
 			}
 			log.Println("sent " + time.Now().String())
+		case <-timer.C:
+			break ProducerLoop
 		}
 	}
 	err := producer.Close()
