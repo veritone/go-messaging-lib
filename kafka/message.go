@@ -16,6 +16,28 @@ const OffsetOldest = -1
 // OffsetNewest lets consumers to retrieve the newest possible message
 const OffsetNewest = -2
 
+type event struct {
+	*gKafka.Message
+}
+
+func (e *event) Payload() []byte {
+	return e.Value
+}
+
+func (e *event) Metadata() map[string]interface{} {
+	return map[string]interface{}{
+		"key":       e.Key,
+		"offset":    e.Offset,
+		"partition": e.Partition,
+		"time":      e.Time,
+		"topic":     e.Topic,
+	}
+}
+
+func (e *event) Raw() interface{} {
+	return e.Message
+}
+
 type messager struct {
 	message *gKafka.Message
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
@@ -15,6 +16,7 @@ type manager struct {
 	multi  cluster.Client
 }
 
+// Manager creates a simple Kafka Manager with default config to perform administrative tasks
 func Manager(host string) (messaging.Manager, error) {
 	c := sarama.NewConfig()
 	// default version
@@ -140,28 +142,48 @@ type PartitionInfo struct {
 	Lag    int64
 }
 
-func (m *manager) CreateTopics(_ context.Context, topics ...string) error {
+func (m *manager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
+	v, ok := opts.Options().(CreateTopicOptions)
+	if !ok {
+		return errors.New("incompatible options, did you use CreateTopicOptions?")
+	}
+
 	brokers := m.multi.Client.Brokers()
 	if len(brokers) == 0 {
 		return errors.New("cannot find any broker to create topic")
 	}
 	t := &sarama.CreateTopicsRequest{}
+	t.Timeout = time.Second * 10
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
 	for _, topic := range topics {
 		t.TopicDetails[topic] = &sarama.TopicDetail{
-			NumPartitions:     1,
-			ReplicationFactor: 1,
+			NumPartitions:     v.NumPartitions,
+			ReplicationFactor: v.ReplicationFactor,
+			ConfigEntries:     v.ConfigEntries,
+			ReplicaAssignment: v.ReplicaAssignment,
 		}
+	}
+	err := brokers[0].Open(m.single.Config())
+	if err != nil {
+		return err
+	}
+	var connected bool
+	for !connected && err == nil {
+		// Wait for connection since Open does not block synchronously.
+		// TODO: should have a channel here
+		connected, err = brokers[0].Connected()
 	}
 	res, err := brokers[0].CreateTopics(t)
 	if err != nil {
 		return err
 	}
-	if len(res.TopicErrors) > 0 {
-		var buf bytes.Buffer
-		for _, err := range res.TopicErrors {
-			buf.WriteString(*err.ErrMsg + ",")
+	var buf bytes.Buffer
+	for _, err := range res.TopicErrors {
+		if err.Err != sarama.ErrNoError {
+			buf.WriteString(err.Err.Error() + ",")
 		}
+	}
+	if buf.Len() > 0 {
 		return errors.New(buf.String())
 	}
 	return nil
@@ -178,4 +200,18 @@ func (m *manager) Close() error {
 		return err
 	}
 	return nil
+}
+
+// CreateTopicOptions is an options that will be applied to topic creation.
+// The properties are idential to sarama.TopicDetail
+type CreateTopicOptions struct {
+	NumPartitions     int32
+	ReplicationFactor int16
+	ReplicaAssignment map[int32][]int32
+	ConfigEntries     map[string]*string
+}
+
+// Options returns the compatible options for creating topics
+func (c CreateTopicOptions) Options() interface{} {
+	return c
 }
