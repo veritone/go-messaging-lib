@@ -1,0 +1,26 @@
+version: '3'
+services:
+  nsqlookupd:
+    image: nsqio/nsq:v0.3.8
+    command: /nsqlookupd
+    ports:
+      - "4160:4160"
+      - "4161:4161"
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/bin/wget -q -s http://0.0.0.0:4161/ping && exit 0 || exit 1"]
+      
+  nsqd:
+    image: nsqio/nsq:v0.3.8
+    command: /nsqd --lookupd-tcp-address=nsqlookupd:4160 --broadcast-address 127.0.0.1
+    depends_on:
+      - nsqlookupd
+    ports:
+      - "4150:4150"
+      - "4151:4151"
+    stop_signal: SIGTERM
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/bin/wget -q -s http://0.0.0.0:4151/ping && exit 0 || exit 1"]
+
+  # Install nsqadmin locally for troubleshooting
+  # - brew install nsq
+  # - nsqadmin --lookupd-http-address=localhost:4161 

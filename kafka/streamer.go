@@ -3,7 +3,6 @@ package kafka
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	gKafka "github.com/segmentio/kafka-go"
@@ -19,7 +18,7 @@ type streamReader struct {
 	messaging.OptionCreator
 	Consumer messaging.Consumer
 	Config   *gKafka.ReaderConfig
-	Steam    <-chan interface{}
+	Steam    <-chan messaging.Event
 	buf      []byte
 }
 
@@ -60,20 +59,15 @@ ConsumerLoop:
 	for {
 		select {
 		case item := <-s.Steam:
-			v, ok := item.(*gKafka.Message)
-			if ok {
-				fmt.Printf("Offset:%d\n", v.Offset)
-				n := copy(p[copied:], v.Value)
-				copied += n
-				if n < len(v.Value) {
-					s.buf = v.Value[n:]
-					return len(p), nil
-				}
-				timer.Reset(time.Second * 2)
-			} else {
-				err = ErrInvalidMessageType
-				break ConsumerLoop
+			payload := item.Payload()
+			n := copy(p[copied:], payload)
+			copied += n
+			if n < len(payload) {
+				s.buf = payload[n:]
+				return len(p), nil
 			}
+			timer.Reset(time.Second * 2)
+
 		case <-timer.C:
 			err = ErrStreamExitTimedout
 			break ConsumerLoop

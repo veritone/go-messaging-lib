@@ -56,7 +56,7 @@ func NewConsumer(config *gKafka.ReaderConfig) messaging.Consumer {
 	return &consumer{r, new(sync.Mutex), make(chan error), t}
 }
 
-func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-chan interface{}, error) {
+func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-chan messaging.Event, error) {
 	options, ok := ops.Options().(*consumerOptions)
 	if !ok {
 		return nil, errors.New("invalid option creator, did you use NewConsumerOption or ConsumerGroupOption?")
@@ -67,7 +67,7 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 			return nil, errors.New("unable to set offset")
 		}
 	}
-	message := make(chan interface{}, 1)
+	message := make(chan messaging.Event, 1)
 	go func() {
 		for {
 			select {
@@ -84,7 +84,7 @@ func (c *consumer) Consume(ctx context.Context, ops messaging.OptionCreator) (<-
 					close(message)
 					return
 				}
-				message <- &m
+				message <- &event{&m}
 			}
 		}
 	}()

@@ -2,11 +2,20 @@
 
 ## Dependencies
 
-Before using any of the examples, you will need to have a Kafka cluster set up. This repository contains a simple `docker-compose` file that can spin up or down a full stack that managages a singple-node kafka cluster. Run:
+Before using any of the examples, you will need to have a Kafka cluster set up. This repository contains a simple `docker-compose` file that can spin up or down a full stack that managages a single-node kafka cluster. Run:
+
+### For Kafka
 
 ```bash
-cd $GOPATH/src/github.com/veritone/go-messaging-lib/example/kafka-sample/
-docker-compose up -d
+cd $GOPATH/src/github.com/veritone/go-messaging-lib/example
+docker-compose -f docker-compose.kafka.yaml up -d
+```
+
+### For NSQ
+
+```bash
+cd $GOPATH/src/github.com/veritone/go-messaging-lib/example
+docker-compose -f docker-compose.nsq.yaml up -d
 ```
 
 Go to:

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,11 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"flag"
-
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	kafkaGo "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
 	"github.com/veritone/go-messaging-lib/kafka"
 )
@@ -44,7 +42,8 @@ func main() {
 	http.HandleFunc("/", intro)
 	http.HandleFunc("/pub", kafkaMiddleware(pub))
 	http.HandleFunc("/sub", kafkaMiddleware(sub))
-	http.HandleFunc("/topics", kafkaMiddleware(list))
+	http.HandleFunc("/admin/topics", kafkaMiddleware(list))
+	http.HandleFunc("/admin/create", kafkaMiddleware(createTopics))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
 	http.Handle("/metrics", promhttp.Handler())
@@ -188,7 +187,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	var (
 		consumer messaging.Consumer
 		err      error
-		queue    <-chan interface{}
+		queue    <-chan messaging.Event
 	)
 	if len(group) == 0 {
 		p, _ := strconv.Atoi(partition)
@@ -212,14 +211,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 		log.Panic(err)
 	}
 	for item := range queue {
-		v, ok := item.(*kafkaGo.Message)
-		if ok {
-			log.Printf("ok: (%d) (%s) (%s)\n", v.Offset, v.Value, v.Time.String())
-		} else {
-			log.Println("NOT OK")
-			// spew.Dump(item)
-			// If not your type, either ignore or forward to another queue
-		}
+		log.Printf("ok: (%s) (%#v) (%T)\n", item.Payload(), item.Metadata(), item.Raw())
 	}
 }
 
@@ -257,6 +249,40 @@ func list(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Panic(err)
 	}
+}
+
+func createTopics(rw http.ResponseWriter, r *http.Request) {
+	// ----------- Setup -----------------------
+	q := r.URL.Query()
+	partition, err := strconv.Atoi(q.Get("partition"))
+	if err != nil {
+		partition = 1
+	}
+	replicationFactor, err := strconv.Atoi(q.Get("replication"))
+	if err != nil {
+		replicationFactor = 1
+	}
+	topic := q.Get("topic")
+	if len(topic) == 0 {
+		rw.Write([]byte("cannot have empty topic"))
+		return
+	}
+
+	// ------- Create Topics -----------------
+	m, err := kafka.Manager("kafka1:9092")
+	if err != nil {
+		log.Panic(err)
+	}
+	if err = m.CreateTopics(context.Background(), kafka.CreateTopicOptions{
+		NumPartitions:     int32(partition),
+		ReplicationFactor: int16(replicationFactor),
+	}, topic); err != nil {
+		log.Panic(err)
+	}
+	if err = m.Close(); err != nil {
+		log.Panic(err)
+	}
+	rw.Write([]byte("createTopic OK"))
 }
 
 func shutdown(rw http.ResponseWriter, r *http.Request) {
