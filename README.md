@@ -7,9 +7,9 @@ This project provides simple interfaces to interact with Veritone's core eventin
 * Pub-Sub
 * Streaming
 
-Depending on the underlying eventing system, user should use the corresponding package to initialize the its client. The initial effort will only have Kafka support.
+Depending on the underlying eventing system, user should use the corresponding package to initialize the its client. The supported systems are Kafka and NSQ.
 
-## Goal
+## Goals
 
 * Offers simple setup and just work out of the box.
 * Provides consistent interfaces that should work for various eventing systems (Kafka, RabbitMQ, NSQ, etc.), thus preventing major breaking changes.
