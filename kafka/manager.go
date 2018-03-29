@@ -11,13 +11,13 @@ import (
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
-type manager struct {
+type KafkaManager struct {
 	single sarama.Client
 	multi  cluster.Client
 }
 
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
-func Manager(host string) (messaging.Manager, error) {
+func Manager(host string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
 	// default version
 	c.Version = sarama.V0_10_2_0
@@ -31,13 +31,13 @@ func Manager(host string) (messaging.Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &manager{
+	return &KafkaManager{
 		single: s,
 		multi:  *m,
 	}, nil
 }
 
-func (m *manager) ListTopics(_ context.Context) (interface{}, error) {
+func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 	// TODO: reduce the complexity and use concurrency
 	e := m.multi.RefreshMetadata()
 	if e != nil {
@@ -142,7 +142,7 @@ type PartitionInfo struct {
 	Lag    int64
 }
 
-func (m *manager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
+func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
 	v, ok := opts.Options().(CreateTopicOptions)
 	if !ok {
 		return errors.New("incompatible options, did you use CreateTopicOptions?")
@@ -188,11 +188,11 @@ func (m *manager) CreateTopics(_ context.Context, opts messaging.OptionCreator, 
 	}
 	return nil
 }
-func (m *manager) DeleteTopics(_ context.Context, topics ...string) error {
+func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 	return errors.New("not yet implemented")
 }
 
-func (m *manager) Close() error {
+func (m *KafkaManager) Close() error {
 	if err := m.single.Close(); err != nil {
 		return err
 	}

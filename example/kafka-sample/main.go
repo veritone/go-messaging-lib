@@ -191,14 +191,20 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	)
 	if len(group) == 0 {
 		p, _ := strconv.Atoi(partition)
-		consumer = kafka.ConsumerFromParition(topic, p, "kafka1:9092")
+		consumer, err = kafka.ConsumerFromPartition(topic, p, "kafka1:9092")
+		if err != nil {
+			log.Panic(err)
+		}
 		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetNewest))
 		if err != nil {
 			log.Panic(err)
 		}
 		log.Printf("consuming from partition %d\n", p)
 	} else {
-		consumer = kafka.Consumer(topic, group, "kafka1:9092")
+		consumer, err = kafka.Consumer(topic, group, "kafka1:9092")
+		if err != nil {
+			log.Panic(err)
+		}
 		queue, err = consumer.Consume(context.TODO(), kafka.ConsumerGroupOption)
 		if err != nil {
 			log.Panic(err)
@@ -294,4 +300,5 @@ func shutdown(rw http.ResponseWriter, r *http.Request) {
 			log.Println("consumer closed")
 		}
 	}
+	consumers = nil
 }
