@@ -52,7 +52,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		groupID:       groupID,
 		topic:         topic,
 		partition:     -1,
-		errors:        make(chan error)}, nil
+		errors:        make(chan error, 1)}, nil
 }
 
 // ConsumerFromPartition initializes a default consumer client for consuming messages
@@ -76,7 +76,7 @@ func ConsumerFromPartition(topic string, partition int, brokers ...string) (*Kaf
 		topic:          topic,
 		partition:      int32(partition),
 		singleConsumer: &consumer,
-		errors:         make(chan error)}, nil
+		errors:         make(chan error, 1)}, nil
 }
 
 func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreator) (<-chan messaging.Event, error) {
@@ -119,8 +119,9 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				errorsCount.
 					WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
 					Add(1)
+				close(rawMessages)
+				break
 			}
-			close(c.errors)
 		}(pConsumer.Errors())
 	} else {
 		// forward messages
@@ -133,8 +134,9 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				errorsCount.
 					WithLabelValues(c.groupID, "consumer", c.groupID, "").
 					Add(1)
+				close(rawMessages)
+				break
 			}
-			close(c.errors)
 		}(c.groupConsumer.Errors())
 	}
 	go func() {
@@ -172,10 +174,14 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 func (c *KafkaConsumer) Close() error {
 	c.Lock()
 	defer c.Unlock()
-
+	close(c.errors)
 	var errorStrs []string
 	if c.partitionConsumer != nil {
 		if err := c.partitionConsumer.Close(); err != nil {
+			errorStrs = append(errorStrs, err.Error())
+		}
+		// drain errors chan
+		for err := range c.partitionConsumer.Errors() {
 			errorStrs = append(errorStrs, err.Error())
 		}
 	}
@@ -188,12 +194,12 @@ func (c *KafkaConsumer) Close() error {
 		if err := c.groupConsumer.Close(); err != nil {
 			errorStrs = append(errorStrs, err.Error())
 		}
+		// drain errors chan
+		for err := range c.groupConsumer.Errors() {
+			errorStrs = append(errorStrs, err.Error())
+		}
 	}
 	if err := c.client.Close(); err != nil {
-		errorStrs = append(errorStrs, err.Error())
-	}
-	// drain errors chan
-	for err := range c.errors {
 		errorStrs = append(errorStrs, err.Error())
 	}
 	if len(errorStrs) > 0 {
