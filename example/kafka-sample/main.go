@@ -191,7 +191,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	)
 	if len(group) == 0 {
 		p, _ := strconv.Atoi(partition)
-		consumer, err = kafka.ConsumerFromParition(topic, p, "kafka1:9092")
+		consumer, err = kafka.ConsumerFromPartition(topic, p, "kafka1:9092")
 		if err != nil {
 			log.Panic(err)
 		}

@@ -31,7 +31,7 @@ type KafkaConsumer struct {
 }
 
 // Consumer initializes a default consumer client for consuming messages.
-// This function uses consumer group and all paritions will be load balanced
+// This function uses consumer group and all partitions will be load balanced
 func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) {
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V0_11_0_2
@@ -55,8 +55,8 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		errors:        make(chan error)}, nil
 }
 
-// ConsumerFromParition initializes a default consumer client for consuming messages
-func ConsumerFromParition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
+// ConsumerFromPartition initializes a default consumer client for consuming messages
+func ConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V0_11_0_2
 	conf.Consumer.Return.Errors = true

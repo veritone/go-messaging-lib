@@ -47,7 +47,7 @@ func testConsumerWithGroup(t *testing.T, topic, group string) {
 func testConsumerFromPartition(t *testing.T, topic string, offset int64) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	c, err := kafka.ConsumerFromParition("t2", 0, kafkaHost)
+	c, err := kafka.ConsumerFromPartition("t2", 0, kafkaHost)
 	assert.NoError(t, err)
 	q, err := c.Consume(context.Background(), kafka.NewConsumerOption(kafka.OffsetOldest))
 	assert.NoError(t, err)
