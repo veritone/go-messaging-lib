@@ -17,17 +17,17 @@ type KafkaManager struct {
 }
 
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
-func Manager(host string) (*KafkaManager, error) {
+func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
 	// default version
 	c.Version = sarama.V0_10_2_0
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V0_10_2_0
-	s, err := sarama.NewClient([]string{host}, c)
+	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
 		return nil, err
 	}
-	m, err := cluster.NewClient([]string{host}, clusterC)
+	m, err := cluster.NewClient(hosts, clusterC)
 	if err != nil {
 		return nil, err
 	}
