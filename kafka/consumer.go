@@ -100,6 +100,10 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 			offsetMetrics.
 				WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
 				Set(float64(m.Offset))
+			// using consumer group should automatically commit offset
+			if c.groupConsumer != nil {
+				c.groupConsumer.MarkOffset(m, "")
+			}
 		}
 	}
 	if c.singleConsumer != nil {
