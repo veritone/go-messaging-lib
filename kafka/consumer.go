@@ -33,6 +33,9 @@ type KafkaConsumer struct {
 // Consumer initializes a default consumer client for consuming messages.
 // This function uses consumer group and all partitions will be load balanced
 func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) {
+	if len(groupID) == 0 {
+		return nil, errors.New("must supply groupID to use high-level consumer")
+	}
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V0_11_0_2
 	conf.Consumer.Return.Errors = true
