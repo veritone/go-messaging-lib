@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -69,64 +72,112 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range topics {
-		//For now, let's not query this topic
-		if t == "__consumer_offsets" {
-			continue
-		}
-		if _, ok := response[t]; !ok {
-			response[t] = TopicInfo{}
-		}
-		partitions, err := m.multi.Partitions(t)
-		if err != nil {
-			return nil, err
-		}
-		for _, pID := range partitions {
-			availableOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetNewest)
-			if err != nil {
-				return nil, err
+	// catch panic if it happens in one of the go routines
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
 			}
-			oldestOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetOldest)
-			if err != nil {
-				return nil, err
+		}
+	}()
+
+	res := make(chan *PartitionInfoContainer)
+	go func() {
+		var wg sync.WaitGroup
+		for _, t := range topics {
+			//For now, let's not query this topic
+			if t == "__consumer_offsets" {
+				continue
 			}
-			for g := range groups {
-				if _, ok := response[t][g]; !ok {
-					response[t][g] = GroupInfo{}
-				}
-				if _, ok := response[t][g][pID]; !ok {
-					response[t][g][pID] = &PartitionInfo{}
-				}
-				if err := m.multi.RefreshCoordinator(g); err != nil {
-					return nil, err
-				}
-				offsetManager, err := sarama.NewOffsetManagerFromClient(g, m.single)
-				if err != nil {
-					return nil, err
-				}
-				defer func() {
-					_ = offsetManager.Close()
-				}()
-				partitionOffsetManager, err := offsetManager.ManagePartition(t, pID)
-				if err != nil {
-					return nil, err
-				}
-				defer func() {
-					_ = partitionOffsetManager.Close()
-				}()
-				consumerOffset, meta := partitionOffsetManager.NextOffset()
-				if consumerOffset == m.multi.Config().Consumer.Offsets.Initial && len(meta) == 0 {
-					//log.Print("INVALID")
-					continue
-				}
-				response[t][g][pID].Start = availableOffset
-				response[t][g][pID].End = oldestOffset
-				response[t][g][pID].Offset = consumerOffset
-				response[t][g][pID].Lag = availableOffset - consumerOffset
-			}
+			wg.Add(1)
+			go func(t string) {
+				defer wg.Done()
+				m.perTopic(t, groups, res)
+			}(t)
+		}
+		wg.Wait()
+		close(res)
+	}()
+
+	for item := range res {
+		if _, ok := response[item.Topic]; !ok {
+			response[item.Topic] = TopicInfo{}
+		}
+		if _, ok := response[item.Topic][item.GroupID]; !ok {
+			response[item.Topic][item.GroupID] = GroupInfo{}
+		}
+		if _, ok := response[item.Topic][item.GroupID][item.Partition]; !ok {
+			response[item.Topic][item.GroupID][item.Partition] = item.PartitionInfo
 		}
 	}
 	return response, nil
+}
+
+func (m *KafkaManager) perTopic(t string, groups map[string]bool, response chan<- *PartitionInfoContainer) {
+	partitions, err := m.multi.Partitions(t)
+	if err != nil {
+		log.Panic(err)
+	}
+	var wg sync.WaitGroup
+	for _, pID := range partitions {
+		wg.Add(1)
+		go func(pID int32) {
+			defer wg.Done()
+			m.perPartition(t, pID, groups, response)
+		}(pID)
+	}
+	wg.Wait()
+}
+
+func (m *KafkaManager) perPartition(t string, pID int32, groups map[string]bool, response chan<- *PartitionInfoContainer) {
+	availableOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetNewest)
+	if err != nil {
+		log.Panic(err)
+	}
+	oldestOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetOldest)
+	if err != nil {
+		log.Panic(err)
+	}
+	var wg sync.WaitGroup
+	for g := range groups {
+		wg.Add(1)
+		go func(g string) {
+			defer wg.Done()
+			m.perGroup(t, g, pID, availableOffset, oldestOffset, response)
+		}(g)
+	}
+	wg.Wait()
+}
+
+func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestOffset int64, response chan<- *PartitionInfoContainer) {
+	if err := m.multi.RefreshCoordinator(g); err != nil {
+		log.Panic(err)
+	}
+	offsetManager, err := sarama.NewOffsetManagerFromClient(g, m.single)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer offsetManager.Close()
+	partitionOffsetManager, err := offsetManager.ManagePartition(t, pID)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer partitionOffsetManager.Close()
+	consumerOffset, _ := partitionOffsetManager.NextOffset()
+	res := &PartitionInfoContainer{
+		PartitionInfo: &PartitionInfo{
+			Start:  availableOffset,
+			End:    oldestOffset,
+			Offset: consumerOffset,
+			Lag:    availableOffset - consumerOffset,
+		},
+		Topic:     t,
+		GroupID:   g,
+		Partition: pID,
+	}
+	response <- res
 }
 
 // ListTopicsResponse is a map of TopicInfo
@@ -144,6 +195,13 @@ type PartitionInfo struct {
 	End    int64
 	Offset int64
 	Lag    int64
+}
+
+type PartitionInfoContainer struct {
+	Topic     string
+	GroupID   string
+	Partition int32
+	*PartitionInfo
 }
 
 func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
