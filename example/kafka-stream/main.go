@@ -75,7 +75,10 @@ func read(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	topic := q.Get("topic")
 
-	c := kafka.Consumer(topic, "g1", "kafka1:9092")
+	c, err := kafka.Consumer(topic, "g1", "kafka1:9092")
+	if err != nil {
+		log.Panic(err)
+	}
 	reader, err := kafka.NewStreamReader(c, kafka.ConsumerGroupOption)
 	if err != nil {
 		log.Panic(err)
