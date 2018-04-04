@@ -70,6 +70,10 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 		return nil, err
 	}
 	for _, t := range topics {
+		//For now, let's not query this topic
+		if t == "__consumer_offsets" {
+			continue
+		}
 		if _, ok := response[t]; !ok {
 			response[t] = TopicInfo{}
 		}
