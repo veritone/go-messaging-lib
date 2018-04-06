@@ -201,7 +201,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Panic(err)
 		}
-		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetOldest))
+		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetNewest))
 		if err != nil {
 			log.Panic(err)
 		}
