@@ -81,6 +81,8 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 	durationParam := q.Get("duration")
 	rateParam := q.Get("rate")
 	threadCountParam := q.Get("thread")
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
 
 	// Default values
 	duration := time.Second * 60
@@ -106,7 +108,7 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 		threadCount = parsedCC
 	}
 
-	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
+	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
 	var wg sync.WaitGroup
 
 	for i := 0; i < threadCount; i++ {
@@ -158,8 +160,10 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	topic := q.Get("topic")
 	message := q.Get("message")
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
 
-	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
+	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
 	msg, err := kafka.NewMessage("", []byte(message))
 	if err != nil {
 		log.Panic(err)
@@ -184,6 +188,8 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	topic := q.Get("topic")
 	partition := q.Get("partition")
 	group := q.Get("group")
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
 	var (
 		consumer messaging.Consumer
 		err      error
@@ -191,17 +197,17 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	)
 	if len(group) == 0 {
 		p, _ := strconv.Atoi(partition)
-		consumer, err = kafka.ConsumerFromPartition(topic, p, "kafka1:9092")
+		consumer, err = kafka.ConsumerFromPartition(topic, p, host+":"+port)
 		if err != nil {
 			log.Panic(err)
 		}
-		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetNewest))
+		queue, err = consumer.Consume(context.TODO(), kafka.NewConsumerOption(kafka.OffsetOldest))
 		if err != nil {
 			log.Panic(err)
 		}
 		log.Printf("consuming from partition %d\n", p)
 	} else {
-		consumer, err = kafka.Consumer(topic, group, "kafka1:9092")
+		consumer, err = kafka.Consumer(topic, group, host+":"+port)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -218,6 +224,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	}
 	for item := range queue {
 		log.Printf("ok: (%s) (%#v) (%T)\n", item.Payload(), item.Metadata(), item.Raw())
+
 	}
 }
 
