@@ -219,6 +219,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	for item := range queue {
 		log.Printf("ok: (%s) (%#v) (%T)\n", item.Payload(), item.Metadata(), item.Raw())
 	}
+	log.Println("message queue has been closed")
 }
 
 // list topics and metadata

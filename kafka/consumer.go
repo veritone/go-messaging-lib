@@ -23,11 +23,11 @@ type KafkaConsumer struct {
 	// in-memory cache for simple partition consumer
 	partitionConsumer sarama.PartitionConsumer
 
-	groupID   string
-	topic     string
-	partition int32
-
-	errors chan error
+	groupID    string
+	topic      string
+	partition  int32
+	eventChans map[chan messaging.Event]bool
+	errors     chan error
 }
 
 // Consumer initializes a default consumer client for consuming messages.
@@ -37,7 +37,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		return nil, errors.New("must supply groupID to use high-level consumer")
 	}
 	conf := cluster.NewConfig()
-	conf.Version = sarama.V0_11_0_2
+	conf.Version = sarama.V1_0_0_0
 	conf.Consumer.Return.Errors = true
 	client, err := cluster.NewClient(brokers, conf)
 	if err != nil {
@@ -55,13 +55,15 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		groupID:       groupID,
 		topic:         topic,
 		partition:     -1,
-		errors:        make(chan error, 1)}, nil
+		eventChans:    make(map[chan messaging.Event]bool),
+		errors:        make(chan error, 1),
+	}, nil
 }
 
 // ConsumerFromPartition initializes a default consumer client for consuming messages
 func ConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
-	conf.Version = sarama.V0_11_0_2
+	conf.Version = sarama.V1_0_0_0
 	conf.Consumer.Return.Errors = true
 	client, err := sarama.NewClient(brokers, conf)
 	if err != nil {
@@ -79,7 +81,9 @@ func ConsumerFromPartition(topic string, partition int, brokers ...string) (*Kaf
 		topic:          topic,
 		partition:      int32(partition),
 		singleConsumer: &consumer,
-		errors:         make(chan error, 1)}, nil
+		eventChans:     make(map[chan messaging.Event]bool),
+		errors:         make(chan error, 1),
+	}, nil
 }
 
 func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreator) (<-chan messaging.Event, error) {
@@ -89,6 +93,8 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 	}
 	messages := make(chan messaging.Event, 1)
 	rawMessages := make(chan *sarama.ConsumerMessage, 1)
+	// cache this event channel for clean up
+	c.eventChans[messages] = true
 
 	consume := func(msgs <-chan *sarama.ConsumerMessage) {
 		for m := range msgs {
@@ -167,10 +173,6 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				}
 			case <-ctx.Done():
 				break ConsumerLoop
-			default:
-				if c.client.Closed() {
-					break ConsumerLoop
-				}
 			}
 		}
 		close(messages)
@@ -208,6 +210,11 @@ func (c *KafkaConsumer) Close() error {
 	}
 	if err := c.client.Close(); err != nil {
 		errorStrs = append(errorStrs, err.Error())
+	}
+	// close all event channels, client should be able to escape
+	// out of a range loop on the event channel
+	for msgChan := range c.eventChans {
+		close(msgChan)
 	}
 	if len(errorStrs) > 0 {
 		return fmt.Errorf(

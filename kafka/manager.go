@@ -23,9 +23,9 @@ type KafkaManager struct {
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
 	// default version
-	c.Version = sarama.V0_10_2_0
+	c.Version = sarama.V1_0_0_0
 	clusterC := cluster.NewConfig()
-	clusterC.Version = sarama.V0_10_2_0
+	clusterC.Version = sarama.V1_0_0_0
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
 		return nil, err
