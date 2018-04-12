@@ -26,7 +26,7 @@ type KafkaConsumer struct {
 	groupID    string
 	topic      string
 	partition  int32
-	eventChans map[chan messaging.Event]bool
+	eventChans map[chan *sarama.ConsumerMessage]bool
 	errors     chan error
 }
 
@@ -55,7 +55,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		groupID:       groupID,
 		topic:         topic,
 		partition:     -1,
-		eventChans:    make(map[chan messaging.Event]bool),
+		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
 		errors:        make(chan error, 1),
 	}, nil
 }
@@ -81,7 +81,7 @@ func ConsumerFromPartition(topic string, partition int, brokers ...string) (*Kaf
 		topic:          topic,
 		partition:      int32(partition),
 		singleConsumer: &consumer,
-		eventChans:     make(map[chan messaging.Event]bool),
+		eventChans:     make(map[chan *sarama.ConsumerMessage]bool),
 		errors:         make(chan error, 1),
 	}, nil
 }
@@ -94,7 +94,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 	messages := make(chan messaging.Event, 1)
 	rawMessages := make(chan *sarama.ConsumerMessage, 1)
 	// cache this event channel for clean up
-	c.eventChans[messages] = true
+	c.eventChans[rawMessages] = true
 
 	consume := func(msgs <-chan *sarama.ConsumerMessage) {
 		for m := range msgs {
@@ -172,6 +172,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 					},
 				}
 			case <-ctx.Done():
+				c.errors <- ctx.Err()
 				break ConsumerLoop
 			}
 		}
@@ -183,7 +184,6 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 func (c *KafkaConsumer) Close() error {
 	c.Lock()
 	defer c.Unlock()
-	close(c.errors)
 	var errorStrs []string
 	if c.partitionConsumer != nil {
 		if err := c.partitionConsumer.Close(); err != nil {
@@ -210,6 +210,11 @@ func (c *KafkaConsumer) Close() error {
 	}
 	if err := c.client.Close(); err != nil {
 		errorStrs = append(errorStrs, err.Error())
+	}
+	close(c.errors)
+	// drains all errors and return them.
+	for errs := range c.errors {
+		errorStrs = append(errorStrs, errs.Error())
 	}
 	// close all event channels, client should be able to escape
 	// out of a range loop on the event channel
