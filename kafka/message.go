@@ -46,8 +46,9 @@ func (k *messager) Message() interface{} {
 	return k.message
 }
 
-// NewMessage creates message that is publishable. Client should pass in []byte as payload
-// for better write throughput
+// NewMessage creates message that is publishable. Client should pass in a JSON Object
+// that has been marshalled into []byte as payload. Otherwise, any other input types will be
+// converted to binary via gob
 func NewMessage(key string, payload interface{}) (messaging.Messager, error) {
 	var (
 		msg []byte

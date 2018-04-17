@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
@@ -59,5 +60,51 @@ func testConsumerFromPartition(t *testing.T, topic string, offset int64) {
 	}(q)
 	assert.NoError(t, err)
 	assert.NoError(t, c.Close())
+	wg.Wait()
+}
+
+func TestBasicConsumer(t *testing.T) {
+	setup(t)
+	defer tearDown(t)
+
+	c, err := kafka.Consumer("test_topic", "g1", "kafka1:9092")
+	assert.NoError(t, err, "should have a consumer connect to kafka")
+	ctx := context.Background()
+	q, err := c.Consume(ctx, kafka.ConsumerGroupOption)
+	assert.NoError(t, err, "should create a queue to consumer from a consumer group")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(<-chan messaging.Event) {
+		for i := range q {
+			spew.Dump(i)
+		}
+		wg.Done()
+	}(q)
+	time.Sleep(time.Second * 5) // Pretend that consumer is working on different thread
+	assert.NoError(t, c.Close(), "should shutdown gracefully")
+	wg.Wait()
+}
+
+func TestConsumerWithContext(t *testing.T) {
+	setup(t)
+	defer tearDown(t)
+
+	c, err := kafka.Consumer("topic_with_context", "g1", "kafka1:9092")
+	assert.NoError(t, err, "should have a consumer connect to kafka")
+	ctx := context.Background()
+	ctx, _ = context.WithDeadline(ctx, time.Now().Add(time.Second*3))
+	q, err := c.Consume(ctx, kafka.ConsumerGroupOption)
+	assert.NoError(t, err, "should create a queue to consumer from a consumer group")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(<-chan messaging.Event) {
+		for i := range q {
+			spew.Dump(i)
+		}
+		wg.Done()
+	}(q)
+	assert.Error(t, c.Close(), "have deadline exceeded error")
 	wg.Wait()
 }
