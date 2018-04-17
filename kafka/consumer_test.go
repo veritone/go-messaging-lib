@@ -14,7 +14,7 @@ import (
 )
 
 func Test_consumers(t *testing.T) {
-	setup(t)
+	multiBrokerSetup(t)
 	defer tearDown(t)
 	// Start and close simple consumer with oldest offset
 	testConsumerFromPartition(t, "t1", kafka.OffsetOldest)

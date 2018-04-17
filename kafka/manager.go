@@ -41,20 +41,16 @@ func Manager(hosts ...string) (*KafkaManager, error) {
 }
 
 func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
-	// TODO: reduce the complexity and use concurrency
-	e := m.multi.RefreshMetadata()
+	e := m.single.RefreshMetadata()
 	if e != nil {
 		return nil, e
 	}
 	groups := make(map[string]bool)
-	for _, b := range m.multi.Brokers() {
-		err := b.Open(m.single.Config())
+	for _, b := range m.single.Brokers() {
+		err := connectBroker(b, m.single.Config())
 		if err != nil {
 			return nil, err
 		}
-		defer func() {
-			_ = b.Close()
-		}()
 		res, err := b.ListGroups(&sarama.ListGroupsRequest{})
 		if err != nil {
 			return nil, err
@@ -68,7 +64,7 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 	}
 
 	response := ListTopicsResponse{}
-	topics, err := m.multi.Topics()
+	topics, err := m.single.Topics()
 	if err != nil {
 		return nil, err
 	}
@@ -83,15 +79,17 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 		}
 	}()
 
+	// if we have topics, add an empty group to return data
+	// even when there isn't any consumer group
+	if len(topics) > 0 {
+		groups[""] = true
+	}
+
 	res := make(chan *PartitionInfoContainer)
 	go func() {
 		var wg sync.WaitGroup
+		wg.Add(len(topics))
 		for _, t := range topics {
-			//For now, let's not query this topic
-			if t == "__consumer_offsets" {
-				continue
-			}
-			wg.Add(1)
 			go func(t string) {
 				defer wg.Done()
 				m.perTopic(t, groups, res)
@@ -116,33 +114,33 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 }
 
 func (m *KafkaManager) perTopic(t string, groups map[string]bool, response chan<- *PartitionInfoContainer) {
-	partitions, err := m.multi.Partitions(t)
+	partitions, err := m.single.Partitions(t)
 	if err != nil {
 		log.Panic(err)
 	}
 	var wg sync.WaitGroup
+	wg.Add(len(partitions))
 	for _, pID := range partitions {
-		wg.Add(1)
 		go func(pID int32) {
-			defer wg.Done()
 			m.perPartition(t, pID, groups, response)
+			wg.Done()
 		}(pID)
 	}
 	wg.Wait()
 }
 
 func (m *KafkaManager) perPartition(t string, pID int32, groups map[string]bool, response chan<- *PartitionInfoContainer) {
-	availableOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetNewest)
+	availableOffset, err := m.single.GetOffset(t, pID, sarama.OffsetNewest)
 	if err != nil {
 		log.Panic(err)
 	}
-	oldestOffset, err := m.multi.GetOffset(t, pID, sarama.OffsetOldest)
+	oldestOffset, err := m.single.GetOffset(t, pID, sarama.OffsetOldest)
 	if err != nil {
 		log.Panic(err)
 	}
 	var wg sync.WaitGroup
+	wg.Add(len(groups))
 	for g := range groups {
-		wg.Add(1)
 		go func(g string) {
 			defer wg.Done()
 			m.perGroup(t, g, pID, availableOffset, oldestOffset, response)
@@ -152,7 +150,7 @@ func (m *KafkaManager) perPartition(t string, pID int32, groups map[string]bool,
 }
 
 func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestOffset int64, response chan<- *PartitionInfoContainer) {
-	if err := m.multi.RefreshCoordinator(g); err != nil {
+	if err := m.single.RefreshCoordinator(g); err != nil {
 		log.Panic(err)
 	}
 	offsetManager, err := sarama.NewOffsetManagerFromClient(g, m.single)
@@ -178,6 +176,23 @@ func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestO
 		Partition: pID,
 	}
 	response <- res
+}
+
+func connectBroker(broker *sarama.Broker, config *sarama.Config) error {
+	if ok, err := broker.Connected(); ok && err == nil {
+		return nil
+	}
+	if err := broker.Open(config); err != nil {
+		return err
+	}
+	connected, err := broker.Connected()
+	if err != nil {
+		return err
+	}
+	if !connected {
+		return fmt.Errorf("failed to connect broker %#v", broker.Addr())
+	}
+	return nil
 }
 
 // ListTopicsResponse is a map of TopicInfo
@@ -210,10 +225,6 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 		return errors.New("incompatible options, did you use CreateTopicOptions?")
 	}
 
-	brokers := m.multi.Client.Brokers()
-	if len(brokers) == 0 {
-		return errors.New("cannot find any broker to create topic")
-	}
 	t := &sarama.CreateTopicsRequest{}
 	t.Timeout = time.Second * 10
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
@@ -225,17 +236,22 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 			ReplicaAssignment: v.ReplicaAssignment,
 		}
 	}
-	err := brokers[0].Open(m.single.Config())
+
+	controllerBroker, err := m.single.Controller()
 	if err != nil {
 		return err
 	}
-	var connected bool
-	for !connected && err == nil {
-		// Wait for connection since Open does not block synchronously.
-		// TODO: should have a channel here
-		connected, err = brokers[0].Connected()
+	connected, err := controllerBroker.Connected()
+	if err != nil {
+		return fmt.Errorf("cannot query for broker connection status, %v", err)
 	}
-	res, err := brokers[0].CreateTopics(t)
+	if !connected {
+		err = controllerBroker.Open(m.single.Config())
+		if err != nil {
+			return err
+		}
+	}
+	res, err := controllerBroker.CreateTopics(t)
 	if err != nil {
 		return err
 	}

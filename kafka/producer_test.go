@@ -11,10 +11,10 @@ import (
 	"github.com/veritone/go-messaging-lib/kafka"
 )
 
-const kafkaHost = "kafka1:9092"
+const kafkaHost = "kafka1:9093"
 
 func Test_producer_integration(t *testing.T) {
-	setup(t)
+	multiBrokerSetup(t)
 	defer tearDown(t)
 	testProducer(t, "t1", kafka.StrategyHash)       // test with Hash Strategy
 	testProducer(t, "t2", kafka.StrategyLeastBytes) // test with LeastBytes
@@ -53,8 +53,8 @@ func setup(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if err = wfi.Find("connected to kafka1:9092", logs, time.Second*20); err != nil {
-		t.Errorf(`"connected to kafka1:9092" phrase should show up within 20s, %v`, err)
+	if _, err = wfi.Find("connected to kafka1:9093", logs, time.Second*20); err != nil {
+		t.Errorf(`"connected to kafka1:9093" phrase should show up within 20s, %v`, err)
 	}
 }
 
@@ -65,5 +65,6 @@ func tearDown(t *testing.T) {
 func Err(t *testing.T, err error) {
 	if err != nil {
 		t.Error(err)
+		t.FailNow()
 	}
 }

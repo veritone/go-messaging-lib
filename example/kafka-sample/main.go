@@ -268,6 +268,8 @@ func list(rw http.ResponseWriter, r *http.Request) {
 func createTopics(rw http.ResponseWriter, r *http.Request) {
 	// ----------- Setup -----------------------
 	q := r.URL.Query()
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
 	partition, err := strconv.Atoi(q.Get("partition"))
 	if err != nil {
 		partition = 1
@@ -283,7 +285,7 @@ func createTopics(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	// ------- Create Topics -----------------
-	m, err := kafka.Manager("kafka1:9092")
+	m, err := kafka.Manager(host + ":" + port)
 	if err != nil {
 		log.Panic(err)
 	}
