@@ -83,6 +83,66 @@ func Test_reusable_manager(t *testing.T) {
 	Err(t, m.Close())
 }
 
+func TestManagerDeleteTopics(t *testing.T) {
+	multiBrokerSetup(t)
+	defer func() {
+		// Throw a breakpoint here for troubleshooting
+		tearDown(t)
+	}()
+	m, err := kafka.Manager("localhost:9093", "localhost:9094", "localhost:9095")
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.CreateTopics(context.TODO(), kafka.CreateTopicOptions{
+		NumPartitions:     5,
+		ReplicationFactor: 1,
+	}, "create_topic_test_1",
+		"create_topic_test_2",
+		"create_topic_test_3",
+		"create_topic_test_4")
+	if err != nil {
+		log.Panic(err)
+	}
+	res, err := m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, _ := res.(kafka.ListTopicsResponse)
+	assert.NotEmpty(t, topics["create_topic_test_1"], "create_topic_test_1 should be created")
+	assert.NotEmpty(t, topics["create_topic_test_2"], "create_topic_test_2 should be created")
+	assert.NotEmpty(t, topics["create_topic_test_3"], "create_topic_test_3 should be created")
+
+	log.Println("Test delete single topic ")
+	err = m.DeleteTopics(context.TODO(), "create_topic_test_2")
+	if err != nil {
+		log.Panic(err)
+	}
+	res, err = m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, _ = res.(kafka.ListTopicsResponse)
+	assert.NotEmpty(t, topics["create_topic_test_1"], "create_topic_test_1 should exist")
+	assert.Empty(t, topics["create_topic_test_2"], "create_topic_test_2 should be deleted")
+	assert.NotEmpty(t, topics["create_topic_test_3"], "create_topic_test_3 should exist")
+
+	log.Println("Test delete multiple topics")
+	err = m.DeleteTopics(context.TODO(), "create_topic_test_1", "create_topic_test_3")
+	if err != nil {
+		log.Panic(err)
+	}
+	res, err = m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, _ = res.(kafka.ListTopicsResponse)
+	assert.Empty(t, topics["create_topic_test_1"], "create_topic_test_1 should be deleted")
+	assert.Empty(t, topics["create_topic_test_2"], "create_topic_test_2 should be deleted")
+	assert.Empty(t, topics["create_topic_test_3"], "create_topic_test_3 should be deleted")
+
+	Err(t, m.Close())
+}
+
 func multiBrokerSetup(t *testing.T) {
 	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
 	if err != nil {
