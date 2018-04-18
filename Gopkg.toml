@@ -24,14 +24,17 @@
 #   go-tests = true
 #   unused-packages = true
 
-
-[[constraint]]
+# This should be temporary until Controller feature gets in an official release
+# For now, we'll check in vendor to lock down version. 
+[[override]]
+  branch = "master"
   name = "github.com/Shopify/sarama"
-  version = "1.16.0"
 
-[[constraint]]
+## This should be temporary 
+[[override]]
+  branch = "master"
   name = "github.com/bsm/sarama-cluster"
-  version = "2.1.13"
+
 
 [[constraint]]
   name = "github.com/davecgh/go-spew"

@@ -53,6 +53,36 @@ func Test_manager(t *testing.T) {
 	Err(t, m.Close())
 }
 
+func Test_reusable_manager(t *testing.T) {
+	multiBrokerSetup(t)
+	defer func() {
+		// Throw a breakpoint here for troubleshooting
+		tearDown(t)
+	}()
+	m, err := kafka.Manager("localhost:9093", "localhost:9094", "localhost:9095")
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.CreateTopics(context.TODO(), kafka.CreateTopicOptions{
+		NumPartitions:     5,
+		ReplicationFactor: 1,
+	}, "create_topic_test_1", "create_topic_test_2")
+	if err != nil {
+		log.Panic(err)
+	}
+	res, err := m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	for i := 0; i < 1000; i++ {
+		_, ok := res.(kafka.ListTopicsResponse)
+		if !ok {
+			Err(t, errors.New("invalid response from ListTopics"))
+		}
+	}
+	Err(t, m.Close())
+}
+
 func multiBrokerSetup(t *testing.T) {
 	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
 	if err != nil {

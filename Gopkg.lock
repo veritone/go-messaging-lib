@@ -16,10 +16,10 @@
   version = "v0.21.0"
 
 [[projects]]
+  branch = "master"
   name = "github.com/Shopify/sarama"
   packages = ["."]
-  revision = "f7be6aa2bc7b2e38edf816b08b582782194a1c02"
-  version = "v1.16.0"
+  revision = "8da9fa72b86689a02355dca1182444cca607e054"
 
 [[projects]]
   branch = "master"
@@ -28,10 +28,10 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
+  branch = "master"
   name = "github.com/bsm/sarama-cluster"
   packages = ["."]
-  revision = "cf455bc755fe41ac9bb2861e7a961833d9c2ecc3"
-  version = "v2.1.13"
+  revision = "d98592677c0aa08d8aafb882d344fb461682b722"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
@@ -42,8 +42,8 @@
 [[projects]]
   name = "github.com/eapache/go-resiliency"
   packages = ["breaker"]
-  revision = "6800482f2c813e689c88b7ed3282262385011890"
-  version = "v1.0.0"
+  revision = "ea41b0fad31007accc7f806884dcdf3da98b79ce"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -61,7 +61,7 @@
   branch = "master"
   name = "github.com/fuzzdota/wfi"
   packages = ["."]
-  revision = "3f1a8950e700e99ca8c0da3279fdc8882b653276"
+  revision = "6bde951eb092fd56296f82a90a170ce72e31007c"
 
 [[projects]]
   name = "github.com/golang/protobuf"
@@ -142,7 +142,7 @@
     "internal/bitbucket.org/ww/goautoneg",
     "model"
   ]
-  revision = "e4aa40a9169a88835b849a6efb71e05dc04b88f0"
+  revision = "d0f7cd64bda49e08b22ae8a730aa57aa0db125d6"
 
 [[projects]]
   branch = "master"
@@ -153,37 +153,25 @@
     "nfs",
     "xfs"
   ]
-  revision = "780932d4fbbe0e69b84c34c20f5c8d0981e109ea"
+  revision = "8b1c2da0d56deffdbb9e48d4414b4e674bd8083e"
 
 [[projects]]
   branch = "master"
   name = "github.com/rcrowley/go-metrics"
   packages = ["."]
-  revision = "8732c616f52954686704c8645fe1a9d59e9df7c1"
-
-[[projects]]
-  name = "github.com/satori/go.uuid"
-  packages = ["."]
-  revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
-  version = "v1.2.0"
+  revision = "d932a24a8ccb8fcadc993e5c6c58f93dac168294"
 
 [[projects]]
   branch = "master"
   name = "github.com/segmentio/kafka-go"
   packages = ["."]
-  revision = "df82858665d07cebf1404cdaf025b435ebf7300b"
+  revision = "b9fe2a626ad790b4169811629601c42d2eeeb7cc"
 
 [[projects]]
   name = "github.com/stretchr/testify"
   packages = ["assert"]
   revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
   version = "v1.2.1"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/veritone/edge-messages"
-  packages = ["."]
-  revision = "42722dc7f4563a0d4a3a51f7f17b1f2c3a18d5eb"
 
 [[projects]]
   name = "go.opencensus.io"
@@ -211,6 +199,7 @@
   packages = [
     "context",
     "context/ctxhttp",
+    "http/httpguts",
     "http2",
     "http2/hpack",
     "idna",
@@ -218,7 +207,7 @@
     "lex/httplex",
     "trace"
   ]
-  revision = "61147c48b25b599e5b561d2e9c4f3e1ef489ca41"
+  revision = "8d16fa6dc9a85c1cd3ed24ad08ff21cf94f10888"
 
 [[projects]]
   branch = "master"
@@ -230,7 +219,7 @@
     "jws",
     "jwt"
   ]
-  revision = "921ae394b9430ed4fb549668d7b087601bd60a81"
+  revision = "6881fee410a5daf86371371f9ad451b95e168b71"
 
 [[projects]]
   branch = "master"
@@ -275,7 +264,7 @@
     "transport/grpc",
     "transport/http"
   ]
-  revision = "9f7560f3b05bd90f33f9d56a449e5afd4dab15b3"
+  revision = "9c79deebf7496e355d7e95d82d4af1fe4e769b2f"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -306,7 +295,7 @@
     "googleapis/rpc/status",
     "protobuf/field_mask"
   ]
-  revision = "51d0944304c3cbce4afe9e5247e21100037bff78"
+  revision = "7fd901a49ba6a7f87732eb344f6e3c5b19d1b200"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -342,6 +331,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c8405d2ad138c4db27450bb1d6ddad7e7798b59ae8eea6e57b1f8cacb108a8c2"
+  inputs-digest = "97f05fb3409237617c154bf7f5a0a8ec2e0de6087150e72234068e531014d5df"
   solver-name = "gps-cdcl"
   solver-version = 1
