@@ -266,8 +266,35 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	}
 	return nil
 }
+
 func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
-	return errors.New("not yet implemented")
+	controllerBroker, err := m.single.Controller()
+	if err != nil {
+		return err
+	}
+	err = connectBroker(controllerBroker, m.single.Config())
+	if err != nil {
+		return err
+	}
+	res, err := controllerBroker.DeleteTopics(&sarama.DeleteTopicsRequest{
+		Topics:  topics,
+		Timeout: time.Second * 5,
+	})
+	if err != nil {
+		return err
+	}
+	if len(res.TopicErrorCodes) > 0 {
+		var buf bytes.Buffer
+		for t, v := range res.TopicErrorCodes {
+			if v != sarama.ErrNoError {
+				buf.WriteString(fmt.Sprintf("unable to delete topic (%s) err %s\n", t, v.Error()))
+			}
+		}
+		if buf.Len() > 0 {
+			return errors.New(buf.String())
+		}
+	}
+	return nil
 }
 
 func (m *KafkaManager) Close() error {
