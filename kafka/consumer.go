@@ -10,7 +10,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
-	gKafka "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
@@ -162,7 +161,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				}
 				// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
 				messages <- &event{
-					&gKafka.Message{
+					&Message{
 						Key:       m.Key,
 						Value:     m.Value,
 						Offset:    m.Offset,

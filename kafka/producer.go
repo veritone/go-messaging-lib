@@ -70,11 +70,11 @@ func NewProducer(config *gKafka.WriterConfig) messaging.Producer {
 }
 
 func (p *producer) Produce(ctx context.Context, msg messaging.Messager) error {
-	kafkaMsg, ok := msg.Message().(*gKafka.Message)
+	kafkaMsg, ok := msg.Message().(*Message)
 	if !ok {
 		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
 	}
-	err := p.WriteMessages(ctx, *kafkaMsg)
+	err := p.WriteMessages(ctx, gKafka.Message(*kafkaMsg))
 	if err != nil {
 		// unfortunately, the underlying library does not expose an error value for checking
 		// we have to match substring

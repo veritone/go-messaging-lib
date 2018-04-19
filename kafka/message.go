@@ -16,8 +16,11 @@ const OffsetOldest = -1
 // OffsetNewest lets consumers to retrieve the newest possible message
 const OffsetNewest = -2
 
+// Message is a data structure representing kafka messages
+type Message gKafka.Message
+
 type event struct {
-	*gKafka.Message
+	*Message
 }
 
 func (e *event) Payload() []byte {
@@ -39,7 +42,7 @@ func (e *event) Raw() interface{} {
 }
 
 type messager struct {
-	message *gKafka.Message
+	message *Message
 }
 
 func (k *messager) Message() interface{} {
@@ -63,7 +66,7 @@ func NewMessage(key string, payload interface{}) (messaging.Messager, error) {
 			return nil, fmt.Errorf("cannot convert message to bytes %v", err)
 		}
 	}
-	return &messager{&gKafka.Message{
+	return &messager{&Message{
 		Time:  time.Now(),
 		Key:   []byte(key),
 		Value: msg,
