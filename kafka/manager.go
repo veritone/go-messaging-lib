@@ -339,7 +339,7 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 func (m *KafkaManager) closeBrokers(brokers []*sarama.Broker) {
 	for _, b := range m.single.Brokers() {
 		connected, err := b.Connected()
-		if connected {
+		if !connected {
 			continue
 		}
 		if err != nil {
