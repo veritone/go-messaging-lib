@@ -360,10 +360,29 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 	return nil
 }
 
+func (m *KafkaManager) closeBrokers(brokers []*sarama.Broker) {
+	for _, b := range m.single.Brokers() {
+		connected, err := b.Connected()
+		if !connected {
+			continue
+		}
+		if err != nil {
+			log.Printf("unable to determine broker connection state %s\n", b.Addr())
+			continue
+		}
+		if err := b.Close(); err != nil {
+			log.Printf("error closing broker %s %v\n", b.Addr(), err)
+		}
+	}
+}
+
 func (m *KafkaManager) Close() error {
+	m.closeBrokers(m.single.Brokers())
 	if err := m.single.Close(); err != nil {
 		return err
 	}
+
+	m.closeBrokers(m.multi.Brokers())
 	if err := m.multi.Close(); err != nil {
 		return err
 	}
