@@ -307,13 +307,37 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 	if err != nil {
 		return err
 	}
-	input := make(map[string]*sarama.TopicPartition)
-	for k, v := range req {
-		input[k] = &sarama.TopicPartition{
-			Count: int32(v),
-		}
+
+	topics, err := m.single.Topics()
+	if err != nil {
+		return err
+	}
+	topicLookup := make(map[string]bool)
+	for _, t := range topics {
+		topicLookup[t] = true
 	}
 
+	input := make(map[string]*sarama.TopicPartition)
+	for topic, pCount := range req {
+		if _, exist := topicLookup[topic]; !exist {
+			return ErrInvalidTopic
+		}
+		// Calling Partitions on non-existent topic will create the topic
+		// which we don't want
+		partitions, e := m.single.Partitions(topic)
+		if e != nil {
+			return e
+		}
+		if len(partitions) == pCount {
+			return ErrSamePartitionCount
+		}
+		if len(partitions) > pCount {
+			return ErrInvalidPartitionCount
+		}
+		input[topic] = &sarama.TopicPartition{
+			Count: int32(pCount),
+		}
+	}
 	res, err := controllerBroker.CreatePartitions(&sarama.CreatePartitionsRequest{
 		Timeout:         time.Second * 5,
 		ValidateOnly:    false,

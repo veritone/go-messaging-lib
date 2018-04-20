@@ -170,12 +170,30 @@ func TestManagerAddPartitions(t *testing.T) {
 	topics, _ := res.(kafka.ListTopicsResponse)
 	assert.Equal(t, 2, len(topics["create_topic_test_1"][""]), "create_topic_test_1 topic should have 2 partitions")
 	assert.Equal(t, 2, len(topics["create_topic_test_2"][""]), "create_topic_test_2 topic should have 2 partitions")
+	assert.Equal(t, 2, len(topics["create_topic_test_3"][""]), "create_topic_test_3 topic should have 2 partitions")
+	assert.Equal(t, 2, len(topics["create_topic_test_4"][""]), "create_topic_test_4 topic should have 2 partitions")
 
 	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
 		"create_topic_test_1": 10,
 		"create_topic_test_2": 5,
 	})
 	assert.NoError(t, err, "AddPartitions should succeed")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_3": 2,
+	})
+	assert.EqualError(t, err, kafka.ErrSamePartitionCount.Error(), "error for same partition count")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_4": 0,
+	})
+	assert.EqualError(t, err, kafka.ErrInvalidPartitionCount.Error(), "error for removing partitions")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_invalid": 2,
+	})
+	assert.EqualError(t, err, kafka.ErrInvalidTopic.Error(), "topic does not exist")
+
 	res, err = m.ListTopics(context.TODO())
 	if err != nil {
 		log.Panic(err)
@@ -183,16 +201,6 @@ func TestManagerAddPartitions(t *testing.T) {
 	topics, _ = res.(kafka.ListTopicsResponse)
 	assert.Equal(t, 10, len(topics["create_topic_test_1"][""]), "create_topic_test_1 topic should have 10 partitions")
 	assert.Equal(t, 5, len(topics["create_topic_test_2"][""]), "create_topic_test_2 topic should have 5 partitions")
-
-	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
-		"create_topic_test_3": 2,
-	})
-	assert.Error(t, err, "should have error due to invalid partition count")
-
-	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
-		"create_topic_test_invalid": 2,
-	})
-	assert.Error(t, err, "topic doesn't exist")
 	Err(t, m.Close())
 }
 
