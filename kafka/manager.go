@@ -297,6 +297,45 @@ func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 	return nil
 }
 
+// AddPartitions increases the partition count for a set of topics
+func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionRequest) error {
+	controllerBroker, err := m.single.Controller()
+	if err != nil {
+		return err
+	}
+	err = connectBroker(controllerBroker, m.single.Config())
+	if err != nil {
+		return err
+	}
+	input := make(map[string]*sarama.TopicPartition)
+	for k, v := range req {
+		input[k] = &sarama.TopicPartition{
+			Count: int32(v),
+		}
+	}
+
+	res, err := controllerBroker.CreatePartitions(&sarama.CreatePartitionsRequest{
+		Timeout:         time.Second * 5,
+		ValidateOnly:    false,
+		TopicPartitions: input,
+	})
+	if err != nil {
+		return err
+	}
+	if len(res.TopicPartitionErrors) > 0 {
+		var buf bytes.Buffer
+		for t, v := range res.TopicPartitionErrors {
+			if v.Err != sarama.ErrNoError {
+				buf.WriteString(fmt.Sprintf("unable to add partitions to topic (%s) err %s\n", t, v.Err.Error()))
+			}
+		}
+		if buf.Len() > 0 {
+			return errors.New(buf.String())
+		}
+	}
+	return nil
+}
+
 func (m *KafkaManager) Close() error {
 	if err := m.single.Close(); err != nil {
 		return err
@@ -306,6 +345,11 @@ func (m *KafkaManager) Close() error {
 	}
 	return nil
 }
+
+// TopicPartitionRequest lets Kafka manager know which topic to modify
+// and the target number of partitions it should have.
+// key = topic name, value = target number of partitions
+type TopicPartitionRequest map[string]int
 
 // CreateTopicOptions is an options that will be applied to topic creation.
 // The properties are idential to sarama.TopicDetail

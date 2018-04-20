@@ -143,6 +143,59 @@ func TestManagerDeleteTopics(t *testing.T) {
 	Err(t, m.Close())
 }
 
+func TestManagerAddPartitions(t *testing.T) {
+	multiBrokerSetup(t)
+	defer func() {
+		// Throw a breakpoint here for troubleshooting
+		tearDown(t)
+	}()
+	m, err := kafka.Manager("localhost:9093", "localhost:9094", "localhost:9095")
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.CreateTopics(context.TODO(), kafka.CreateTopicOptions{
+		NumPartitions:     2,
+		ReplicationFactor: 1,
+	}, "create_topic_test_1",
+		"create_topic_test_2",
+		"create_topic_test_3",
+		"create_topic_test_4")
+	if err != nil {
+		log.Panic(err)
+	}
+	res, err := m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, _ := res.(kafka.ListTopicsResponse)
+	assert.Equal(t, 2, len(topics["create_topic_test_1"][""]), "create_topic_test_1 topic should have 2 partitions")
+	assert.Equal(t, 2, len(topics["create_topic_test_2"][""]), "create_topic_test_2 topic should have 2 partitions")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_1": 10,
+		"create_topic_test_2": 5,
+	})
+	assert.NoError(t, err, "AddPartitions should succeed")
+	res, err = m.ListTopics(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, _ = res.(kafka.ListTopicsResponse)
+	assert.Equal(t, 10, len(topics["create_topic_test_1"][""]), "create_topic_test_1 topic should have 10 partitions")
+	assert.Equal(t, 5, len(topics["create_topic_test_2"][""]), "create_topic_test_2 topic should have 5 partitions")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_3": 2,
+	})
+	assert.Error(t, err, "should have error due to invalid partition count")
+
+	err = m.AddPartitions(context.TODO(), kafka.TopicPartitionRequest{
+		"create_topic_test_invalid": 2,
+	})
+	assert.Error(t, err, "topic doesn't exist")
+	Err(t, m.Close())
+}
+
 func multiBrokerSetup(t *testing.T) {
 	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
 	if err != nil {
