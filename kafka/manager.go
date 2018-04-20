@@ -61,6 +61,10 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 				groups[k] = true
 			}
 		}
+		// Close this connection
+		if err = b.Close(); err != nil {
+			return nil, err
+		}
 	}
 
 	response := ListTopicsResponse{}
@@ -255,6 +259,12 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	if err != nil {
 		return err
 	}
+
+	// Close this connection
+	if err = brokers[0].Close(); err != nil {
+		return err
+	}
+
 	var buf bytes.Buffer
 	for _, err := range res.TopicErrors {
 		if err.Err != sarama.ErrNoError {
