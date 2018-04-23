@@ -10,8 +10,14 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
+	"github.com/rcrowley/go-metrics"
 	messaging "github.com/veritone/go-messaging-lib"
 )
+
+func init() {
+	// disable go-metrics. We use prometheus for instrumentation.
+	metrics.UseNilMetrics = true
+}
 
 type KafkaConsumer struct {
 	*sync.Mutex
