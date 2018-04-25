@@ -118,15 +118,9 @@ func (m *KafkaManager) perTopic(t string, groups map[string]bool, response chan<
 	if err != nil {
 		log.Panic(err)
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(partitions))
 	for _, pID := range partitions {
-		go func(pID int32) {
-			m.perPartition(t, pID, groups, response)
-			wg.Done()
-		}(pID)
+		m.perPartition(t, pID, groups, response)
 	}
-	wg.Wait()
 }
 
 func (m *KafkaManager) perPartition(t string, pID int32, groups map[string]bool, response chan<- *PartitionInfoContainer) {
@@ -138,15 +132,10 @@ func (m *KafkaManager) perPartition(t string, pID int32, groups map[string]bool,
 	if err != nil {
 		log.Panic(err)
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(groups))
 	for g := range groups {
-		go func(g string) {
-			defer wg.Done()
-			m.perGroup(t, g, pID, availableOffset, oldestOffset, response)
-		}(g)
+		m.perGroup(t, g, pID, availableOffset, oldestOffset, response)
 	}
-	wg.Wait()
+
 }
 
 func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestOffset int64, response chan<- *PartitionInfoContainer) {
