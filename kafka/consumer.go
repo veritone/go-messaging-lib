@@ -171,7 +171,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 						Key:       m.Key,
 						Value:     m.Value,
 						Offset:    m.Offset,
-						Partition: int(m.Partition),
+						Partition: m.Partition,
 						Time:      m.Timestamp,
 						Topic:     m.Topic,
 					},

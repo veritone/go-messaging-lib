@@ -16,15 +16,16 @@ const kafkaHost = "kafka1:9093"
 func Test_producer_integration(t *testing.T) {
 	multiBrokerSetup(t)
 	defer tearDown(t)
-	testProducer(t, "t1", kafka.StrategyHash)       // test with Hash Strategy
-	testProducer(t, "t2", kafka.StrategyLeastBytes) // test with LeastBytes
+	testProducer(t, "t1", kafka.StrategyHash) // test with Hash Strategy
+	//testProducer(t, "t2", kafka.StrategyLeastBytes) // test with LeastBytes
 	testProducer(t, "t3", kafka.StrategyRoundRobin) // test with Round Robin
 	testProducer(t, "t1", kafka.StrategyRoundRobin) // test on existing topic
 
 }
 
 func testProducer(t *testing.T, topic string, s kafka.Strategy) {
-	p := kafka.Producer(topic, s, kafkaHost)
+	p, err := kafka.Producer(topic, s, kafkaHost)
+	assert.NoError(t, err, "should be able to create Producer")
 	testSendingMessages(t, p)
 	assert.NoError(t, p.Close())
 }

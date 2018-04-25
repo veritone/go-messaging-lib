@@ -108,7 +108,10 @@ func benchPub(rw http.ResponseWriter, r *http.Request) {
 		threadCount = parsedCC
 	}
 
-	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
+	producer, err := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
+	if err != nil {
+		log.Panic(err)
+	}
 	var wg sync.WaitGroup
 
 	for i := 0; i < threadCount; i++ {
@@ -163,7 +166,10 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	host := q.Get("kafka_host")
 	port := q.Get("kafka_port")
 
-	producer := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
+	producer, err := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
+	if err != nil {
+		log.Panic(err)
+	}
 	msg, err := kafka.NewMessage("", []byte(message))
 	if err != nil {
 		log.Panic(err)
