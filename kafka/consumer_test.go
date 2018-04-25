@@ -64,10 +64,10 @@ func testConsumerFromPartition(t *testing.T, topic string, offset int64) {
 }
 
 func TestBasicConsumer(t *testing.T) {
-	setup(t)
+	multiBrokerSetup(t)
 	defer tearDown(t)
 
-	c, err := kafka.Consumer("test_topic", "g1", "kafka1:9092")
+	c, err := kafka.Consumer("test_topic", "g1", "kafka1:9093")
 	assert.NoError(t, err, "should have a consumer connect to kafka")
 	ctx := context.Background()
 	q, err := c.Consume(ctx, kafka.ConsumerGroupOption)
@@ -87,10 +87,10 @@ func TestBasicConsumer(t *testing.T) {
 }
 
 func TestConsumerWithContext(t *testing.T) {
-	setup(t)
+	multiBrokerSetup(t)
 	defer tearDown(t)
 
-	c, err := kafka.Consumer("topic_with_context", "g1", "kafka1:9092")
+	c, err := kafka.Consumer("topic_with_context", "g1", "kafka1:9093")
 	assert.NoError(t, err, "should have a consumer connect to kafka")
 	ctx := context.Background()
 	ctx, _ = context.WithDeadline(ctx, time.Now().Add(time.Second*3))
@@ -105,6 +105,6 @@ func TestConsumerWithContext(t *testing.T) {
 		}
 		wg.Done()
 	}(q)
-	assert.Error(t, c.Close(), "have deadline exceeded error")
 	wg.Wait()
+	assert.Error(t, c.Close(), "have deadline exceeded error")
 }
