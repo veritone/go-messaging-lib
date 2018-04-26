@@ -230,16 +230,12 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	if err != nil {
 		return err
 	}
-	connected, err := controllerBroker.Connected()
+	err = connectBroker(controllerBroker, m.single.Config())
 	if err != nil {
-		return fmt.Errorf("cannot query for broker connection status, %v", err)
+		return err
 	}
-	if !connected {
-		err = controllerBroker.Open(m.single.Config())
-		if err != nil {
-			return err
-		}
-	}
+	defer controllerBroker.Close()
+
 	res, err := controllerBroker.CreateTopics(t)
 	if err != nil {
 		return err
@@ -265,6 +261,8 @@ func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 	if err != nil {
 		return err
 	}
+	defer controllerBroker.Close()
+
 	res, err := controllerBroker.DeleteTopics(&sarama.DeleteTopicsRequest{
 		Topics:  topics,
 		Timeout: time.Second * 5,
@@ -296,6 +294,7 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 	if err != nil {
 		return err
 	}
+	defer controllerBroker.Close()
 
 	topics, err := m.single.Topics()
 	if err != nil {
