@@ -90,7 +90,6 @@ func (p *producer) Produce(_ context.Context, msg messaging.Messager) error {
 	if !ok {
 		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
 	}
-	log.Println("Topic:", p.topic)
 	var err error
 	p.asyncProducer.Input() <- &sarama.ProducerMessage{
 		Topic: p.topic,
