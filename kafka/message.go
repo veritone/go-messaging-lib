@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	gKafka "github.com/segmentio/kafka-go"
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
@@ -17,7 +16,14 @@ const OffsetOldest = -1
 const OffsetNewest = -2
 
 // Message is a data structure representing kafka messages
-type Message gKafka.Message
+type Message struct {
+	Value     []byte
+	Key       []byte
+	Offset    int64
+	Partition int32
+	Time      time.Time
+	Topic     string
+}
 
 type event struct {
 	*Message
@@ -67,7 +73,6 @@ func NewMessage(key string, payload interface{}) (messaging.Messager, error) {
 		}
 	}
 	return &messager{&Message{
-		Time:  time.Now(),
 		Key:   []byte(key),
 		Value: msg,
 	}}, nil
