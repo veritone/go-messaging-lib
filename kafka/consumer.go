@@ -44,6 +44,11 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_0_0_0
 	conf.Consumer.Return.Errors = true
+
+	// This is necessary to read messages on newly created topics
+	// before a consumer started listening
+	conf.Consumer.Offsets.Initial = sarama.OffsetOldest
+
 	client, err := cluster.NewClient(brokers, conf)
 	if err != nil {
 		return nil, err
