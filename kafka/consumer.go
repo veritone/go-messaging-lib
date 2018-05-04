@@ -194,6 +194,19 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 func (c *KafkaConsumer) Close() error {
 	c.Lock()
 	defer c.Unlock()
+	defer func() error {
+		// Sarama panics when closing already closed Kafka clients.
+		// This is not a fatal condition that warrants panicking.
+		// Recover and rethrow a normal error so clients can act appropriately,
+		// most likely print an error message then ignore.
+		// There could be other conditions where Sarama panics. However the idea is
+		// to let clients decide how to handle those situations instead of crashing
+		// whole application.
+		if r := recover(); r != nil {
+			return fmt.Errorf("Recovered from Sarama panic: %v", r)
+		}
+		return errors.New("Recovered from unknown Sarama panic")
+	}()
 	var errorStrs []string
 	if c.partitionConsumer != nil {
 		if err := c.partitionConsumer.Close(); err != nil {
