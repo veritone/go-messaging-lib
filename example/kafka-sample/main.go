@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
@@ -166,11 +167,11 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	host := q.Get("kafka_host")
 	port := q.Get("kafka_port")
 
-	producer, err := kafka.Producer(topic, kafka.StrategyRoundRobin, host+":"+port)
+	producer, err := kafka.Producer(topic, kafka.StrategyHash, host+":"+port)
 	if err != nil {
 		log.Panic(err)
 	}
-	msg, err := kafka.NewMessage("", []byte(message))
+	msg, err := kafka.NewMessage(strconv.Itoa(rand.Intn(50)), []byte(message))
 	if err != nil {
 		log.Panic(err)
 	}
@@ -254,14 +255,15 @@ func list(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	// the library exposes ListTopicsResponse type for casting
-	if v, ok := data.(kafka.ListTopicsResponse); ok {
+	v, ok := data.(kafka.ListTopicsResponse)
+	if ok {
 		log.Println("got ListTopicsResponse")
-		_ = v
+		delete(v, "__consumer_offsets")
 		// You can either cast it and access the data here directly e.g
 		// 	info = v[topic_name][group_name][partition_number]
 		// or just dump it as json like below
 	}
-	jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(v)
 	if err != nil {
 		log.Panic(err)
 	}

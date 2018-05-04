@@ -103,6 +103,13 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 		if _, ok := response[item.Topic]; !ok {
 			response[item.Topic] = TopicInfo{}
 		}
+		// This logic is to filter out consumer groups that do not work on the current topic {item.Topic}
+		// item.Offset, in this case, returns -1 until the consumer group is assigned to work on the topic.
+		// We do not apply this logic to the empty group {""} since we'd like to display number of partitions for
+		// the current topic.
+		if item.Offset < 0 && item.GroupID != "" {
+			continue
+		}
 		if _, ok := response[item.Topic][item.GroupID]; !ok {
 			response[item.Topic][item.GroupID] = GroupInfo{}
 		}
@@ -155,8 +162,8 @@ func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestO
 	consumerOffset, _ := partitionOffsetManager.NextOffset()
 	res := &PartitionInfoContainer{
 		PartitionInfo: &PartitionInfo{
-			Start:  availableOffset,
-			End:    oldestOffset,
+			Start:  oldestOffset,
+			End:    availableOffset,
 			Offset: consumerOffset,
 			Lag:    availableOffset - consumerOffset,
 		},
