@@ -64,3 +64,14 @@ for item := range queue {
 ## Notes
 
 This repo is still a WIP. It's not yet suitable for production use.
+
+## Mock
+
+This package includes mocks of all its interface types (in package `mocks`) that is useful for testing. Please update it after changing any of the interfaces.
+
+[Mockery](https://github.com/vektra/mockery) - A mock code autogenerator for golang
+```
+mockery -name=Manager
+mockery -name=Producer
+...
+```
