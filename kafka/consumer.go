@@ -203,9 +203,9 @@ func (c *KafkaConsumer) Close() error {
 		// to let clients decide how to handle those situations instead of crashing
 		// whole application.
 		if r := recover(); r != nil {
-			return fmt.Errorf("Recovered from Sarama panic: %v", r)
+			return fmt.Errorf("Recovered from panic: %v", r)
 		}
-		return errors.New("Recovered from unknown Sarama panic")
+		return nil
 	}()
 	var errorStrs []string
 	if c.partitionConsumer != nil {
