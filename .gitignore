@@ -13,3 +13,5 @@ idea/
 # testing 
 **/full-stack
 .kafka-*/
+example/kafka-sample/kafka-sample
+
