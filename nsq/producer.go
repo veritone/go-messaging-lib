@@ -13,13 +13,13 @@ type NsqProducer struct {
 	nsqp *gnsq.Producer
 }
 
-func Producer(host string) *NsqProducer {
+func Producer(host string) (*NsqProducer, error) {
 	config := gnsq.NewConfig()
 	p, err := gnsq.NewProducer(host, config)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return &NsqProducer{p}
+	return &NsqProducer{p}, p.Ping()
 }
 
 func (p *NsqProducer) Produce(_ context.Context, m messaging.Messager) error {
