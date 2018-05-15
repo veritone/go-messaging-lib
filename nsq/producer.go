@@ -16,7 +16,13 @@ type NsqProducer struct {
 // NewProducer returns an nsq producer. This is a light wrapper for Producer constructor that
 // aims for backward compatibility with old `go-messaging` repo`
 func NewProducer(config *Config) (*NsqProducer, error) {
-	return Producer(config.Nsqd)
+	conf := gnsq.NewConfig()
+	conf.MaxInFlight = config.MaxInFlight
+	p, err := gnsq.NewProducer(config.Nsqd, conf)
+	if err != nil {
+		return nil, err
+	}
+	return &NsqProducer{p}, p.Ping()
 }
 
 func Producer(host string) (*NsqProducer, error) {
