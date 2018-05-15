@@ -14,6 +14,14 @@ type NsqConsumer struct {
 	nsqlookupds []string
 }
 
+// NewConsumer returns an nsq consumer. This is a light wrapper for Consumer constructor that
+// aims for backward compatibility with old `go-messaging` repo`
+func NewConsumer(topic, channel string, config *Config) (*NsqConsumer, error) {
+	return Consumer(topic, channel,
+		[]string{config.Nsqd},
+		config.Nsqlookupds)
+}
+
 func Consumer(topic, channel string, nsqds, nsqlookupds []string) (*NsqConsumer, error) {
 	conf := gnsq.NewConfig()
 	c, err := gnsq.NewConsumer(topic, channel, conf)
