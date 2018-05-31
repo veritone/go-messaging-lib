@@ -60,7 +60,7 @@ func Consumer(topic, channel string, nsqds, nsqlookupds []string) (*NsqConsumer,
 func (c *NsqConsumer) Consume(_ context.Context, _ messaging.OptionCreator) (<-chan messaging.Event, error) {
 	msgs := make(chan messaging.Event, 1)
 	c.nsqc.AddHandler(gnsq.HandlerFunc(func(m *gnsq.Message) error {
-		msgs <- &event{m}
+		msgs <- &NsqEvent{m}
 		return nil
 	}))
 

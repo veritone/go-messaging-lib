@@ -58,15 +58,15 @@ func (o *consumerOptions) Options() interface{} {
 	return o
 }
 
-type event struct {
+type NsqEvent struct {
 	*gnsq.Message
 }
 
-func (e *event) Payload() []byte {
+func (e *NsqEvent) Payload() []byte {
 	return e.Body
 }
 
-func (e *event) Metadata() map[string]interface{} {
+func (e *NsqEvent) Metadata() map[string]interface{} {
 	return map[string]interface{}{
 		"timestamp":   e.Timestamp,
 		"NSQDAddress": e.NSQDAddress,
@@ -75,6 +75,6 @@ func (e *event) Metadata() map[string]interface{} {
 	}
 }
 
-func (e *event) Raw() interface{} {
+func (e *NsqEvent) Raw() interface{} {
 	return e.Message
 }
