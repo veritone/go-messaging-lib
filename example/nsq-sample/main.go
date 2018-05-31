@@ -75,7 +75,10 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	topic := q.Get("topic")
 	message := q.Get("message")
 
-	producer := nsq.Producer("localhost:4150")
+	producer, err := nsq.Producer("localhost:4150")
+	if err != nil {
+		log.Panic(err)
+	}
 	msg, err := nsq.NewMessage(topic, []byte(message))
 	if err != nil {
 		log.Panic(err)
