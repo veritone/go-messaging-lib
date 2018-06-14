@@ -10,7 +10,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/rcrowley/go-metrics"
 	messaging "github.com/veritone/go-messaging-lib"
 )
@@ -143,7 +142,6 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				errorsCount.
 					WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
 					Add(1)
-				spew.Dump(e)
 				close(rawMessages)
 				break
 			}
@@ -159,7 +157,6 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 				errorsCount.
 					WithLabelValues(c.groupID, "consumer", c.groupID, "").
 					Add(1)
-				spew.Dump(e)
 				close(rawMessages)
 				break
 			}
