@@ -120,6 +120,75 @@ func (m *KafkaManager) ListTopics(_ context.Context) (interface{}, error) {
 	return response, nil
 }
 
+// ListTopicsLite is a fast version of ListTopics. It returns a list of topics
+// and a list of consumer groups for all brokers.
+func (m *KafkaManager) ListTopicsLite(_ context.Context) ([]string, []string, error) {
+	e := m.single.RefreshMetadata()
+	if e != nil {
+		return nil, nil, e
+	}
+	groups := make([]string, 0)
+	groupMap := make(map[string]bool)
+	for _, b := range m.single.Brokers() {
+		err := connectBroker(b, m.single.Config())
+		if err != nil {
+			return nil, nil, err
+		}
+		// Get all groups managed by current broker
+		res, err := b.ListGroups(&sarama.ListGroupsRequest{})
+		if err != nil {
+			return nil, nil, err
+		}
+		for k, v := range res.Groups {
+			if _, exist := groupMap[k]; exist {
+				continue
+			}
+			// take only groups marked as 'consumer'
+			if v == "consumer" {
+				groupMap[k] = true
+				groups = append(groups, k)
+			}
+		}
+	}
+
+	topics, err := m.single.Topics()
+	return topics, groups, err
+}
+
+// GetPartitionInfo retrieves information for all partitions that are associated with the given consumer_group:topic
+func (m *KafkaManager) GetPartitionInfo(topic, consumerGroup string, withRefresh bool) ([]*PartitionInfoContainer, error) {
+	if withRefresh {
+		e := m.single.RefreshMetadata()
+		if e != nil {
+			return nil, e
+		}
+	}
+
+	// catch panic if it happens in one of the go routines
+	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+			}
+		}
+	}()
+	responses := make(chan *PartitionInfoContainer)
+	go func() {
+		m.perTopic(topic, map[string]bool{
+			consumerGroup: true,
+		}, responses)
+		close(responses)
+	}()
+	results := []*PartitionInfoContainer{}
+	for r := range responses {
+		results = append(results, r)
+	}
+	return results, err
+}
+
 func (m *KafkaManager) perTopic(t string, groups map[string]bool, response chan<- *PartitionInfoContainer) {
 	partitions, err := m.single.Partitions(t)
 	if err != nil {

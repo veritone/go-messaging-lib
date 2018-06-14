@@ -44,6 +44,7 @@ func main() {
 	http.HandleFunc("/pub", kafkaMiddleware(pub))
 	http.HandleFunc("/sub", kafkaMiddleware(sub))
 	http.HandleFunc("/admin/topics", kafkaMiddleware(list))
+	http.HandleFunc("/admin/topics-lite", kafkaMiddleware(listLite))
 	http.HandleFunc("/admin/create", kafkaMiddleware(createTopics))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
@@ -263,6 +264,44 @@ func list(rw http.ResponseWriter, r *http.Request) {
 		// 	info = v[topic_name][group_name][partition_number]
 		// or just dump it as json like below
 	}
+	jsonData, err := json.Marshal(v)
+	if err != nil {
+		log.Panic(err)
+	}
+	_, err = rw.Write(jsonData)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+// list topics and metadata
+func listLite(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
+	spew.Dump(host, port)
+	manager, err := kafka.Manager(host + ":" + port)
+	if err != nil {
+		log.Panic(err)
+	}
+	topics, groups, err := manager.ListTopicsLite(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	if err = manager.Close(); err != nil {
+		log.Panic(err)
+	}
+
+	type Response struct {
+		Topics []string
+		Groups []string
+	}
+
+	v := &Response{
+		Topics: topics,
+		Groups: groups,
+	}
+
 	jsonData, err := json.Marshal(v)
 	if err != nil {
 		log.Panic(err)

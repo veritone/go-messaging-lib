@@ -204,6 +204,112 @@ func TestManagerAddPartitions(t *testing.T) {
 	Err(t, m.Close())
 }
 
+func TestManagerListTopicsLite(t *testing.T) {
+	multiBrokerSetup(t)
+	defer func() {
+		// Throw a breakpoint here for troubleshooting
+		tearDown(t)
+	}()
+	m, err := kafka.Manager("localhost:9093", "localhost:9094", "localhost:9095")
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.CreateTopics(context.TODO(), kafka.CreateTopicOptions{
+		NumPartitions:     2,
+		ReplicationFactor: 1,
+	}, "create_topic_test_1",
+		"create_topic_test_2",
+		"create_topic_test_3",
+		"create_topic_test_4")
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c1, _ := kafka.Consumer("create_topic_test_1", "g1", "localhost:9093", "localhost:9094", "localhost:9095")
+	c1.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	c2, _ := kafka.Consumer("create_topic_test_2", "g2", "localhost:9093", "localhost:9094", "localhost:9095")
+	c2.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	c3, err := kafka.Consumer("create_topic_test_3", "g3", "localhost:9093", "localhost:9094", "localhost:9095")
+	c3.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	c4, err := kafka.Consumer("create_topic_test_1", "g4", "localhost:9093", "localhost:9094", "localhost:9095")
+	c4.Consume(context.TODO(), kafka.ConsumerGroupOption)
+
+	p1, _ := kafka.Producer("create_topic_test_1", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	p2, _ := kafka.Producer("create_topic_test_2", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	p3, _ := kafka.Producer("create_topic_test_3", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	p4, _ := kafka.Producer("create_topic_test_4", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	msg, _ := kafka.NewMessage("", []byte("test message"))
+	p1.Produce(context.TODO(), msg)
+	p2.Produce(context.TODO(), msg)
+	p3.Produce(context.TODO(), msg)
+	p4.Produce(context.TODO(), msg)
+
+	topics, consumerGroups, err := m.ListTopicsLite(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	assert.Equal(t, 5, len(topics), "5 topics should be created, including __consumer_offets")
+	log.Println(spew.Sprint(topics))
+	assert.Equal(t, 4, len(consumerGroups), "4 consumer groups should be created")
+	log.Println(spew.Sprint(consumerGroups))
+	Err(t, m.Close())
+}
+
+func TestManagerGetPartitionInfo(t *testing.T) {
+	multiBrokerSetup(t)
+	defer func() {
+		// Throw a breakpoint here for troubleshooting
+		// Teardown can cause EOF for consumer. Comment it out if run into issue while testing
+		tearDown(t)
+	}()
+	m, err := kafka.Manager("localhost:9093", "localhost:9094", "localhost:9095")
+	if err != nil {
+		log.Panic(err)
+	}
+	m.CreateTopics(context.TODO(), kafka.CreateTopicOptions{
+		NumPartitions:     2,
+		ReplicationFactor: 1,
+	}, "create_topic_test_1",
+		"create_topic_test_2",
+		"create_topic_test_3",
+		"create_topic_test_4")
+
+	p1, _ := kafka.Producer("create_topic_test_1", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	msg, _ := kafka.NewMessage("", make([]byte, 999000))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Close())
+
+	c4, _ := kafka.Consumer("create_topic_test_1", "g4", "localhost:9093")
+	q, _ := c4.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	// consume only 2/3 messages
+	for i := 0; i < 6; i++ {
+		<-q
+	}
+	Err(t, c4.Close())
+
+	p1, _ = kafka.Producer("create_topic_test_1", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Produce(context.TODO(), msg))
+	Err(t, p1.Close())
+
+	// // Offset commits ever one second by default
+	// // https://github.com/Shopify/sarama/blob/master/config.go#L238
+	// time.Sleep(time.Second * 2)
+	results, err := m.GetPartitionInfo("create_topic_test_1", "g4", true)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	assert.Equal(t, int64(1), results[0].PartitionInfo.Lag, "5 topics should be created, including __consumer_offets")
+	assert.Equal(t, int64(1), results[1].PartitionInfo.Lag, "5 topics should be created, including __consumer_offets")
+	m.Close()
+}
+
 func multiBrokerSetup(t *testing.T) {
 	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
 	if err != nil {
