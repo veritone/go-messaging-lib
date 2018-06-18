@@ -27,8 +27,8 @@
 # This should be temporary until Controller feature gets in an official release
 # For now, we'll check in vendor to lock down version. 
 [[override]]
-  branch = "master"
   name = "github.com/Shopify/sarama"
+  version = "1.17.0"
 
 ## This should be temporary 
 [[override]]
@@ -51,10 +51,6 @@
 [[constraint]]
   name = "github.com/prometheus/client_golang"
   version = "0.8.0"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/segmentio/kafka-go"
 
 [prune]
   go-tests = true

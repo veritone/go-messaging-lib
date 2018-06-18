@@ -3,8 +3,6 @@ package kafka_test
 import (
 	"context"
 	"errors"
-	"io"
-	"io/ioutil"
 	"log"
 	"sync"
 	"testing"
@@ -12,7 +10,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 
-	"github.com/fuzzdota/wfi"
 	"github.com/stretchr/testify/assert"
 	"github.com/veritone/go-messaging-lib/kafka"
 )
@@ -297,7 +294,7 @@ func TestManagerGetPartitionInfo(t *testing.T) {
 	Err(t, p1.Produce(context.TODO(), msg))
 	Err(t, p1.Close())
 
-	// // Offset commits ever one second by default
+	// // Offset commits every one second by default
 	// // https://github.com/Shopify/sarama/blob/master/config.go#L238
 	// time.Sleep(time.Second * 2)
 	results, err := m.GetPartitionInfo("create_topic_test_1", "g4", true)
@@ -310,38 +307,61 @@ func TestManagerGetPartitionInfo(t *testing.T) {
 	m.Close()
 }
 
-func multiBrokerSetup(t *testing.T) {
-	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
-	if err != nil {
-		t.Error(err)
-	}
-	log1R, log1W := io.Pipe()
-	log2R, log2W := io.Pipe()
-	log3R, log3W := io.Pipe()
+func TestManagerDeleteConsumerGroups(t *testing.T) {
+	multiBrokerSetup(t)
+	defer tearDown(t)
 
-	go func() {
-		defer log1W.Close()
-		defer log2W.Close()
-		defer log3W.Close()
+	brokers := []string{"kafka1:9093", "localhost:9094", "localhost:9095"}
 
-		mw := io.MultiWriter(log1W, log2W, log3W)
-		io.Copy(mw, logs)
-	}()
-
-	waitForIt := func(phrase string, l io.Reader, wg *sync.WaitGroup) {
-		txt, err := wfi.Find(phrase, l, time.Second*20)
-		if err != nil {
-			t.Errorf(`"broker cannot connect within 20s, %v`, err)
-		}
-		log.Println("Broker started:", txt)
+	makeProducer := func(wg *sync.WaitGroup, topic string, brokers ...string) {
+		p, _ := kafka.Producer(topic, kafka.StrategyRoundRobin, brokers...)
+		m, _ := kafka.NewMessage("", []byte("test payload"))
+		e := p.Produce(context.TODO(), m)
+		Err(t, e)
 		wg.Done()
-		ioutil.ReadAll(l)
 	}
+	var wgP sync.WaitGroup
+	wgP.Add(3)
+	go makeProducer(&wgP, "tpoic_test_1", brokers...)
+	go makeProducer(&wgP, "tpoic_test_2", brokers...)
+	go makeProducer(&wgP, "tpoic_test_3", brokers...)
+	wgP.Wait()
 
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go waitForIt("[KafkaServer id=1] started", log1R, &wg)
-	go waitForIt("[KafkaServer id=2] started", log2R, &wg)
-	go waitForIt("[KafkaServer id=3] started", log3R, &wg)
-	wg.Wait()
+	makeConsumer := func(wg *sync.WaitGroup, topic, group string, brokers ...string) {
+		c, _ := kafka.Consumer(topic, group, brokers...)
+		c.Consume(context.TODO(), kafka.ConsumerGroupOption)
+		time.Sleep(2 * time.Second)
+		c.Close()
+		time.Sleep(2 * time.Second)
+		wg.Done()
+	}
+	var wgC sync.WaitGroup
+	wgC.Add(5)
+	go makeConsumer(&wgC, "topic_test_1", "g1", brokers...)
+	go makeConsumer(&wgC, "topic_test_1", "g2", brokers...)
+	go makeConsumer(&wgC, "topic_test_1", "g3", brokers...)
+	go makeConsumer(&wgC, "topic_test_2", "g4", brokers...)
+	go makeConsumer(&wgC, "topic_test_3", "g5", brokers...)
+	wgC.Wait()
+
+	m, _ := kafka.Manager("kafka1:9093")
+	topics, groups, err := m.ListTopicsLite(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	spew.Dump(topics, groups)
+	err = m.DeleteConsumerGroups(true, "g3", "g4", "g5")
+	if err != nil {
+		log.Panic(err)
+	}
+	_, groups, err = m.ListTopicsLite(context.TODO())
+	if err != nil {
+		log.Panic(err)
+	}
+	for _, g := range groups {
+		switch g {
+		case "g3", "g4", "g5":
+			assert.Fail(t, "groups are not remove properly", spew.Sdump(groups))
+		}
+	}
 }

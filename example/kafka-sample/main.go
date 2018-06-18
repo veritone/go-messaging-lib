@@ -10,6 +10,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,31 @@ _         ___  _                                 _
 The purpose of this service is to provide guidance on how to properly ultize 
 go-messaging-lib features and showcase real integration and benchmarking with kafka framework
 
+Examples:
+ * Publish message:
+	> localhost:8080/pub?topic=test&message=example&kafka_port=9093
+
+ * Subscribe to a topic:
+	> localhost:8080/sub?topic=test&group=cg_test&kafka_port=9093
+	> localhost:8080/sub?topic=test&partition=1&kafka_port=9093
+
+ * List topics and lags:
+ 	> localhost:8080/admin/topics?kafka_port=9093
+
+ * List topics and groups (lite version):
+ 	> localhost:8080/admin/topics-lite?kafka_port=9093
+
+ * Create topics with partitions and replicas:
+	> localhost:8080/admin/create?topic=new_topic&partition=2&replication=2&kafka_port=9093
+
+ * Delete consumer groups:
+	> localhost:8080
+
+ * Clean up existing consumer groups
+	> localhost:8080/shutdown
+
+ * Metrics
+	> localhost:8080/metrics
 `
 
 var consumers []messaging.Consumer
@@ -46,6 +72,7 @@ func main() {
 	http.HandleFunc("/admin/topics", kafkaMiddleware(list))
 	http.HandleFunc("/admin/topics-lite", kafkaMiddleware(listLite))
 	http.HandleFunc("/admin/create", kafkaMiddleware(createTopics))
+	http.HandleFunc("/admin/delete/cg", kafkaMiddleware(deleteConsumerGroups))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
 	http.Handle("/metrics", promhttp.Handler())
@@ -308,6 +335,25 @@ func listLite(rw http.ResponseWriter, r *http.Request) {
 	}
 	_, err = rw.Write(jsonData)
 	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func deleteConsumerGroups(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	host := q.Get("kafka_host")
+	port := q.Get("kafka_port")
+	groups := q.Get("groups")
+	cgroups := strings.Split(groups, ",")
+	manager, err := kafka.Manager(host + ":" + port)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = manager.DeleteConsumerGroups(true, cgroups...)
+	if err != nil {
+		log.Panic(err)
+	}
+	if err = manager.Close(); err != nil {
 		log.Panic(err)
 	}
 }

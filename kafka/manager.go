@@ -23,9 +23,9 @@ type KafkaManager struct {
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
 	// default version
-	c.Version = sarama.V1_0_0_0
+	c.Version = sarama.V1_1_0_0
 	clusterC := cluster.NewConfig()
-	clusterC.Version = sarama.V1_0_0_0
+	clusterC.Version = sarama.V1_1_0_0
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
 		return nil, err
@@ -187,6 +187,14 @@ func (m *KafkaManager) GetPartitionInfo(topic, consumerGroup string, withRefresh
 		results = append(results, r)
 	}
 	return results, err
+}
+
+func (m *KafkaManager) Partitions(topic string) ([]int32, error) {
+	return m.single.Partitions(topic)
+}
+
+func (m *KafkaManager) LatestOffset(topic string, partition int32, timeInMs int64) (int64, error) {
+	return m.single.GetOffset(topic, partition, timeInMs)
 }
 
 func (m *KafkaManager) perTopic(t string, groups map[string]bool, response chan<- *PartitionInfoContainer) {
@@ -420,6 +428,58 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 		if buf.Len() > 0 {
 			return errors.New(buf.String())
 		}
+	}
+	return nil
+}
+
+// DeleteConsumerGroups removes consumer groups from kafka brokers. Error will be thrown
+// if consumer groups have active consumer(s).
+func (m *KafkaManager) DeleteConsumerGroups(withRefresh bool, groups ...string) error {
+	var errMsg string
+	brokerCGMap := make(map[int32][]string)
+	for _, g := range groups {
+		if withRefresh {
+			if err := m.single.RefreshCoordinator(g); err != nil {
+				return fmt.Errorf("cannot find coordinator for cg %s, %+v", g, err)
+			}
+		}
+		b, err := m.single.Coordinator(g)
+		if err != nil {
+			return fmt.Errorf("cannot find coordinator for cg %s, %+v", g, err)
+		}
+		_, found := brokerCGMap[b.ID()]
+		if found {
+			brokerCGMap[b.ID()] = append(brokerCGMap[b.ID()], g)
+		} else {
+			brokerCGMap[b.ID()] = []string{g}
+		}
+	}
+	for _, b := range m.single.Brokers() {
+		v, found := brokerCGMap[b.ID()]
+		if !found {
+			continue
+		}
+		err := connectBroker(b, m.single.Config())
+		if err != nil {
+			return err
+		}
+		res, err := b.DeleteGroups(&sarama.DeleteGroupsRequest{
+			Groups: v,
+		})
+		if err != nil {
+			return err
+		}
+
+		for k, v := range res.GroupErrorCodes {
+			if v == sarama.ErrNoError {
+				continue
+			}
+			errMsg += fmt.Sprintf("%s (id: %s), ", v.Error(), k)
+		}
+
+	}
+	if errMsg != "" {
+		return errors.New(errMsg)
 	}
 	return nil
 }
