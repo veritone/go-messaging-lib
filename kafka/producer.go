@@ -36,6 +36,7 @@ const (
 // Producer initializes a default producer client for publishing messages
 func Producer(topic string, strategy Strategy, brokers ...string) (messaging.Producer, error) {
 	config := sarama.NewConfig()
+	config.Version = sarama.V1_1_0_0
 	config.Producer.Return.Errors = true
 	config.Producer.Return.Successes = true
 

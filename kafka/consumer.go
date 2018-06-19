@@ -42,7 +42,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		return nil, errors.New("must supply groupID to use high-level consumer")
 	}
 	conf := cluster.NewConfig()
-	conf.Version = sarama.V1_0_0_0
+	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
 
 	// This is necessary to read messages on newly created topics
@@ -73,7 +73,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 // ConsumerFromPartition initializes a default consumer client for consuming messages
 func ConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
-	conf.Version = sarama.V1_0_0_0
+	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
 	client, err := sarama.NewClient(brokers, conf)
 	if err != nil {

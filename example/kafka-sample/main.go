@@ -10,10 +10,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	messaging "github.com/veritone/go-messaging-lib"
 	"github.com/veritone/go-messaging-lib/kafka"
@@ -30,6 +30,34 @@ _         ___  _                                 _
 The purpose of this service is to provide guidance on how to properly ultize 
 go-messaging-lib features and showcase real integration and benchmarking with kafka framework
 
+Examples:
+ * Publish message:
+	> localhost:8080/pub?topic=test&message=example&kafka_port=9093
+
+ * Subscribe to a topic:
+	> localhost:8080/sub?topic=test&group=cg_test&kafka_port=9093
+	> localhost:8080/sub?topic=test&partition=1&kafka_port=9093
+
+ * List topics and lags:
+ 	> localhost:8080/admin/topics?kafka_port=9093
+
+ * List topics and groups (lite version):
+ 	> localhost:8080/admin/topics-lite?kafka_port=9093
+
+ * List Partition Information for consumer group and topic
+ 	> localhost:8080/admin/info/cg?topic=test&group=cg_test&kafka_port=9093
+
+ * Create topics with partitions and replicas:
+	> localhost:8080/admin/create?topic=new_topic&partition=2&replication=2&kafka_port=9093
+
+ * Delete consumer groups:
+	> localhost:8080
+
+ * Clean up existing consumer groups
+	> localhost:8080/shutdown
+
+ * Metrics
+	> localhost:8080/metrics
 `
 
 var consumers []messaging.Consumer
@@ -46,6 +74,8 @@ func main() {
 	http.HandleFunc("/admin/topics", kafkaMiddleware(list))
 	http.HandleFunc("/admin/topics-lite", kafkaMiddleware(listLite))
 	http.HandleFunc("/admin/create", kafkaMiddleware(createTopics))
+	http.HandleFunc("/admin/delete/cg", kafkaMiddleware(deleteConsumerGroups))
+	http.HandleFunc("/admin/info/cg", kafkaMiddleware(getPartitionInfo))
 	http.HandleFunc("/bench-pub", kafkaMiddleware(benchPub))
 	http.HandleFunc("/shutdown", kafkaMiddleware(shutdown))
 	http.Handle("/metrics", promhttp.Handler())
@@ -239,22 +269,12 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 
 // list topics and metadata
 func list(rw http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	host := q.Get("kafka_host")
-	port := q.Get("kafka_port")
-	spew.Dump(host, port)
-	manager, err := kafka.Manager(host + ":" + port)
-	if err != nil {
-		log.Panic(err)
-	}
+	manager := getManager(rw, r)
+	defer manager.Close()
 	data, err := manager.ListTopics(context.TODO())
 	if err != nil {
 		log.Panic(err)
 	}
-	if err = manager.Close(); err != nil {
-		log.Panic(err)
-	}
-
 	// the library exposes ListTopicsResponse type for casting
 	v, ok := data.(kafka.ListTopicsResponse)
 	if ok {
@@ -276,19 +296,10 @@ func list(rw http.ResponseWriter, r *http.Request) {
 
 // list topics and metadata
 func listLite(rw http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	host := q.Get("kafka_host")
-	port := q.Get("kafka_port")
-	spew.Dump(host, port)
-	manager, err := kafka.Manager(host + ":" + port)
-	if err != nil {
-		log.Panic(err)
-	}
+	manager := getManager(rw, r)
+	defer manager.Close()
 	topics, groups, err := manager.ListTopicsLite(context.TODO())
 	if err != nil {
-		log.Panic(err)
-	}
-	if err = manager.Close(); err != nil {
 		log.Panic(err)
 	}
 
@@ -312,11 +323,53 @@ func listLite(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createTopics(rw http.ResponseWriter, r *http.Request) {
-	// ----------- Setup -----------------------
+func getManager(rw http.ResponseWriter, r *http.Request) *kafka.KafkaManager {
 	q := r.URL.Query()
 	host := q.Get("kafka_host")
 	port := q.Get("kafka_port")
+	manager, err := kafka.Manager(host + ":" + port)
+	if err != nil {
+		log.Panic(err)
+	}
+	return manager
+}
+
+func getPartitionInfo(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	topic := q.Get("topic")
+	group := q.Get("group")
+
+	manager := getManager(rw, r)
+	defer manager.Close()
+	result, err := manager.GetPartitionInfo(topic, group, true)
+	if err != nil {
+		log.Panic(err)
+	}
+	jsonData, err := json.Marshal(result)
+	if err != nil {
+		log.Panic(err)
+	}
+	_, err = rw.Write(jsonData)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func deleteConsumerGroups(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	groups := q.Get("groups")
+	cgroups := strings.Split(groups, ",")
+	manager := getManager(rw, r)
+	defer manager.Close()
+	err := manager.DeleteConsumerGroups(true, cgroups...)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func createTopics(rw http.ResponseWriter, r *http.Request) {
+	// ----------- Setup -----------------------
+	q := r.URL.Query()
 	partition, err := strconv.Atoi(q.Get("partition"))
 	if err != nil {
 		partition = 1
@@ -332,17 +385,12 @@ func createTopics(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	// ------- Create Topics -----------------
-	m, err := kafka.Manager(host + ":" + port)
-	if err != nil {
-		log.Panic(err)
-	}
+	m := getManager(rw, r)
+	defer m.Close()
 	if err = m.CreateTopics(context.Background(), kafka.CreateTopicOptions{
 		NumPartitions:     int32(partition),
 		ReplicationFactor: int16(replicationFactor),
 	}, topic); err != nil {
-		log.Panic(err)
-	}
-	if err = m.Close(); err != nil {
 		log.Panic(err)
 	}
 	rw.Write([]byte("createTopic OK"))

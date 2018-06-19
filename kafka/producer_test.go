@@ -3,9 +3,7 @@ package kafka_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/fuzzdota/wfi"
 	"github.com/stretchr/testify/assert"
 	messaging "github.com/veritone/go-messaging-lib"
 	"github.com/veritone/go-messaging-lib/kafka"
@@ -47,25 +45,4 @@ func testSendingMessages(t *testing.T, p messaging.Producer) {
 	m, err = kafka.NewMessage("test-key", []byte{})
 	assert.NoError(t, err)
 	assert.NoError(t, p.Produce(context.TODO(), m), "should not return a error")
-}
-
-func setup(t *testing.T) {
-	logs, err := wfi.UpWithLogs("./test", "docker-compose.kafka.yaml")
-	if err != nil {
-		t.Error(err)
-	}
-	if _, err = wfi.Find("connected to kafka1:9093", logs, time.Second*20); err != nil {
-		t.Errorf(`"connected to kafka1:9093" phrase should show up within 20s, %v`, err)
-	}
-}
-
-func tearDown(t *testing.T) {
-	wfi.Down("./test", "docker-compose.kafka.yaml")
-}
-
-func Err(t *testing.T, err error) {
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
 }
