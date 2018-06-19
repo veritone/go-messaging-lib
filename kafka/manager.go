@@ -156,6 +156,7 @@ func (m *KafkaManager) ListTopicsLite(_ context.Context) ([]string, []string, er
 }
 
 // GetPartitionInfo retrieves information for all partitions that are associated with the given consumer_group:topic
+// non-exisiting topic will be created automatically.
 func (m *KafkaManager) GetPartitionInfo(topic, consumerGroup string, withRefresh bool) ([]*PartitionInfoContainer, error) {
 	if withRefresh {
 		e := m.single.RefreshMetadata()
@@ -237,12 +238,21 @@ func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestO
 	}
 	defer partitionOffsetManager.Close()
 	consumerOffset, _ := partitionOffsetManager.NextOffset()
+	var lag int64
+	//no consumer group case / no work to be done
+	if consumerOffset == -1 {
+		if availableOffset > 0 {
+			lag = availableOffset
+		}
+	} else {
+		lag = availableOffset - consumerOffset
+	}
 	res := &PartitionInfoContainer{
 		PartitionInfo: &PartitionInfo{
 			Start:  oldestOffset,
 			End:    availableOffset,
 			Offset: consumerOffset,
-			Lag:    availableOffset - consumerOffset,
+			Lag:    lag,
 		},
 		Topic:     t,
 		GroupID:   g,
