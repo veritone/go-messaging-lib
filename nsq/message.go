@@ -49,7 +49,9 @@ func getBytes(payload interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-type consumerOptions struct{}
+type consumerOptions struct {
+	AutoAck bool
+}
 
 // NsqConsumerOption is the default for NSQ
 var NsqConsumerOption messaging.OptionCreator = &consumerOptions{}
