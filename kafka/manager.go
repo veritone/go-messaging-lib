@@ -239,12 +239,14 @@ func (m *KafkaManager) perGroup(t, g string, pID int32, availableOffset, oldestO
 	defer partitionOffsetManager.Close()
 	consumerOffset, _ := partitionOffsetManager.NextOffset()
 	var lag int64
-	//no consumer group case / no work to be done
-	if consumerOffset == -1 {
-		if availableOffset > 0 {
-			lag = availableOffset
-		}
-	} else {
+	switch true {
+	case oldestOffset == availableOffset: // no work to be done
+		lag = 0
+	case consumerOffset == -1 && availableOffset > 0: // no consumer group with some work
+		lag = availableOffset
+	case consumerOffset == -1 && availableOffset == 0: // no consumer group and no work
+		lag = 0
+	default:
 		lag = availableOffset - consumerOffset
 	}
 	res := &PartitionInfoContainer{
