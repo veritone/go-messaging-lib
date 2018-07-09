@@ -78,5 +78,5 @@ func (e *NsqEvent) Metadata() map[string]interface{} {
 }
 
 func (e *NsqEvent) Raw() interface{} {
-	return e.Message
+	return e
 }
