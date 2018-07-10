@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,7 +20,7 @@ import (
 // HelpMessage displays help command
 const HelpMessage = `    
  
-|￣￣￣￣￣￣|
+|￣￣￣￣￣￣￣|
 | NSQ Sample |
 |____________|
 (\__/) || 
@@ -30,11 +31,30 @@ go-messaging-lib features and showcase real integration and benchmarking with ns
 `
 
 var consumers []messaging.Consumer
+var config nsq.Config
+
+var exampleConfig = []byte(`
+{
+	"name": "nsq",
+	"nsqd": "localhost:4150",
+	"nsqlookupdDiscovery": false,
+	"nsqlookupds": ["localhost:4161"],
+	"maxInFlight": 1,
+	"concurrentHandlers": 2,
+	"msgTimeout": 300,
+	"logLevel": "debug"
+}
+`)
 
 func main() {
 
 	portPtr := flag.String("p", "8080", "http port")
 	flag.Parse()
+
+	if err := json.Unmarshal(exampleConfig, &config); err != nil {
+		log.Panic(err)
+	}
+	log.Printf("Config: \n%s", spew.Sdump(config))
 
 	fmt.Println(HelpMessage)
 	http.HandleFunc("/", intro)
@@ -75,7 +95,7 @@ func pub(rw http.ResponseWriter, r *http.Request) {
 	topic := q.Get("topic")
 	message := q.Get("message")
 
-	producer, err := nsq.Producer("localhost:4150")
+	producer, err := nsq.NewProducer(&config)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -107,11 +127,11 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 		err      error
 		queue    <-chan messaging.Event
 	)
-	consumer, err = nsq.Consumer(topic, channel, nil, []string{"localhost:4161"})
+	consumer, err = nsq.NewConsumer(topic, channel, &config)
 	if err != nil {
 		log.Panic(err)
 	}
-	queue, err = consumer.Consume(context.TODO(), nsq.NsqConsumerOption)
+	queue, err = consumer.Consume(context.TODO(), &nsq.ConsumerOptions{AutoFinish: true})
 	if err != nil {
 		log.Panic(err)
 	}

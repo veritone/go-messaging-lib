@@ -14,4 +14,7 @@ type Config struct {
 	ConcurrentHandlers  int      `json:"concurrentHandlers" yaml:"concurrentHandlers"`
 	MsgTimeout          int      `json:"msgTimeout" yaml:"msgTimeout"` // seconds
 	MsgTimeoutDuration  time.Duration
+
+	// New fields
+	LogLevel string `json:"logLevel" yaml:"logLevel"`
 }

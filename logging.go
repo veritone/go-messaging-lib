@@ -6,13 +6,17 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Logger = *zap.Logger
 
-func AddLogger(env string) (Logger, error) {
-	if env == "" {
-		env, _ = os.LookupEnv("LOGGER")
+func AddLogger(level string) (Logger, error) {
+	env, _ := os.LookupEnv("LOGGER")
+	logLevel, found := supportedLevels[level]
+	if !found {
+		log.Printf("unsupported logLevel (%s). Defaulting to info. The supported levels are: error, warn, info, and debug", level)
+		logLevel = zapcore.InfoLevel
 	}
 	var (
 		logger *zap.Logger
@@ -20,15 +24,21 @@ func AddLogger(env string) (Logger, error) {
 	)
 	switch strings.ToLower(env) {
 	case "dev":
-		logger, err = zap.NewDevelopment()
+		// Development puts the logger in development mode, which changes the
+		// behavior of DPanicLevel and takes stacktraces more liberally.
+		config := zap.NewDevelopmentConfig()
+		config.Level = zap.NewAtomicLevelAt(logLevel)
+		logger, err = config.Build()
 	default:
-		logger, err = zap.NewProduction()
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(logLevel)
+		logger, err = config.Build()
 	}
 	return logger, err
 }
 
-func MustAddLogger(env string) Logger {
-	logger, err := AddLogger(env)
+func MustAddLogger(level string) Logger {
+	logger, err := AddLogger(level)
 	if err != nil {
 		// Panic with standard logging
 		log.Panic(err)
@@ -42,4 +52,11 @@ func MapToLogger(data map[string]string) []zap.Field {
 		fields = append(fields, zap.String(k, v))
 	}
 	return fields
+}
+
+var supportedLevels = map[string]zapcore.Level{
+	"error": zapcore.ErrorLevel,
+	"warn":  zapcore.WarnLevel,
+	"info":  zapcore.InfoLevel,
+	"debug": zapcore.DebugLevel,
 }

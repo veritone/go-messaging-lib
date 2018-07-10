@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/davecgh/go-spew/spew"
+
 	gnsq "github.com/nsqio/go-nsq"
 	messaging "github.com/veritone/go-messaging-lib"
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,6 +23,10 @@ type NsqConsumer struct {
 	nsqc        *gnsq.Consumer
 	nsqds       []string
 	nsqlookupds []string
+	topic       string
+	channel     string
+	*messaging.Tracer
+	messaging.Logger
 }
 
 // NewConsumer returns an nsq consumer. This is a light wrapper for Consumer constructor that
@@ -41,7 +48,15 @@ func NewConsumer(topic, channel string, config *Config) (*NsqConsumer, error) {
 			return nil, errors.New("unable to discover nsqlookupds")
 		}
 	}
-	return &NsqConsumer{c, []string{config.Nsqd}, config.Nsqlookupds}, nil
+	return &NsqConsumer{
+		nsqc:        c,
+		nsqds:       []string{config.Nsqd},
+		nsqlookupds: config.Nsqlookupds,
+		topic:       topic,
+		channel:     channel,
+		Tracer:      messaging.MustAddTracer("", ""),
+		Logger:      messaging.MustAddLogger(config.LogLevel),
+	}, nil
 }
 
 func Consumer(topic, channel string, nsqds, nsqlookupds []string) (*NsqConsumer, error) {
@@ -54,13 +69,37 @@ func Consumer(topic, channel string, nsqds, nsqlookupds []string) (*NsqConsumer,
 		return nil, errors.New("must supply either nsqd or nsqlookup addresses")
 	}
 
-	return &NsqConsumer{c, nsqds, nsqlookupds}, nil
+	return &NsqConsumer{
+		nsqc:        c,
+		nsqds:       nsqds,
+		nsqlookupds: nsqlookupds,
+		topic:       topic,
+		channel:     channel,
+		Tracer:      messaging.MustAddTracer("", ""),
+		Logger:      messaging.MustAddLogger("info"),
+	}, nil
 }
 
-func (c *NsqConsumer) Consume(_ context.Context, _ messaging.OptionCreator) (<-chan messaging.Event, error) {
+func (c *NsqConsumer) Consume(_ context.Context, opts messaging.OptionCreator) (<-chan messaging.Event, error) {
+	nsqOpts, ok := opts.(*ConsumerOptions)
+	if !ok {
+		return nil, fmt.Errorf("consumer option is invalid, %s", spew.Sprint(opts))
+	}
 	msgs := make(chan messaging.Event, 1)
 	c.nsqc.AddHandler(gnsq.HandlerFunc(func(m *gnsq.Message) error {
-		msgs <- &NsqEvent{m}
+		event := &NsqEvent{
+			topic:   c.topic,
+			channel: c.channel,
+			Message: m,
+		}
+		msgs <- event
+		c.Debug("received message",
+			zap.Uint16("attempts", m.Attempts),
+			zap.ByteString("payload", m.Body))
+		bytesProcessed.WithLabelValues(c.topic, "consumer", c.channel, messaging.NameFromEvent(m.Body)).Add(float64(len(m.Body)))
+		if nsqOpts.AutoFinish {
+			event.Finish()
+		}
 		return nil
 	}))
 
