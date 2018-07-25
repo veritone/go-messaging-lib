@@ -9,7 +9,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/any"
 	opentracing "github.com/opentracing/opentracing-go"
-	"github.com/satori/uuid"
+	"github.com/satori/go.uuid"
 	"github.com/uber/jaeger-client-go"
 	config "github.com/uber/jaeger-client-go/config"
 	events "github.com/veritone/core-messages/generated/go/events"
@@ -137,7 +137,7 @@ func (t *Tracer) Decorate(msgType interface{}, msgPayload []byte) *events.VtEven
 		t.logger.Debug("eventName:", zap.String("eventName", eventName))
 		return &events.VtEvent{
 			Core: &events.Core{
-				Id:        uuid.NewV4().String(),
+				Id:        uuid.Must(uuid.NewV4()).String(),
 				Name:      eventName,
 				Timestamp: time.Now().Format(time.RFC1123),
 			},
