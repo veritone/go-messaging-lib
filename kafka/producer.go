@@ -85,7 +85,7 @@ func NewProducer(topic string, config *sarama.Config, brokers ...string) (messag
 		topic:         topic}, nil
 }
 
-func (p *producer) Produce(_ context.Context, msg messaging.Messager) error {
+func (p *producer) Produce(_ context.Context, msg messaging.Messager, _ ...messaging.Event) error {
 	kafkaMsg, ok := msg.Message().(*Message)
 	if !ok {
 		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
