@@ -37,6 +37,14 @@
   version = "1.0.7"
 
 [[constraint]]
+  branch = "master"
+  name = "github.com/veritone/core-messages"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/satori/go.uuid"
+
+[[constraint]]
   name = "github.com/prometheus/client_golang"
   version = "0.8.0"
 

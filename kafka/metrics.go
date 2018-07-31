@@ -1,10 +1,7 @@
 package kafka
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
-	gKafka "github.com/segmentio/kafka-go"
 )
 
 var (
@@ -55,18 +52,4 @@ func init() {
 	)
 
 	prometheus.MustRegister(bytesProcessed, messagesProcessed, errorsCount, offsetMetrics, lagMetrics)
-}
-
-// monitorProducer exposes metric
-func monitorProducer(w *gKafka.Writer, updateInterval time.Duration) (ticker *time.Ticker) {
-	ticker = time.NewTicker(updateInterval)
-	go func() {
-		for range ticker.C {
-			s := w.Stats()
-			bytesProcessed.WithLabelValues(s.Topic, "producer", "", "").Add(float64(s.Bytes))
-			messagesProcessed.WithLabelValues(s.Topic, "producer", "", "").Add(float64(s.Messages))
-			errorsCount.WithLabelValues(s.Topic, "producer", "", "").Add(float64(s.Errors))
-		}
-	}()
-	return
 }
