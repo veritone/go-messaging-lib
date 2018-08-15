@@ -6,6 +6,7 @@
 
 # IntelliJ IDE
 idea/
+.idea
 
 # Dep & Govend
 vendor/
