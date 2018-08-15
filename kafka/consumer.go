@@ -10,6 +10,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rcrowley/go-metrics"
 	messaging "github.com/veritone/go-messaging-lib"
 )
@@ -43,8 +44,15 @@ func (consumer *KafkaConsumer) DisableAutoMark() {
 }
 
 // MarkOffset lets clients mark offset manually after they process each message
-func (consumer *KafkaConsumer) MarkOffset(message *sarama.ConsumerMessage, metadata string) {
-	consumer.groupConsumer.MarkOffset(message, metadata)
+func (consumer *KafkaConsumer) MarkOffset(msg messaging.Event, metadata string) error {
+	var obj sarama.ConsumerMessage
+	// Convert to sarama consumer message
+	err := mapstructure.Decode(msg.Metadata(), &obj)
+	if err != nil {
+		return fmt.Errorf("Error converting from msg to sarama message format: %s", err)
+	}
+	consumer.groupConsumer.MarkOffset(&obj, metadata)
+	return nil
 }
 
 // Consumer initializes a default consumer client for consuming messages.
