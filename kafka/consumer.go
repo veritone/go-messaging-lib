@@ -123,9 +123,7 @@ func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages
 			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
 			Set(float64(m.Offset))
 		// Only auto mark offset when automark is enabled and it's a group consumer
-		fmt.Println("Before marking offset check")
 		if c.autoMark && c.groupConsumer != nil {
-			fmt.Println("Marking offset")
 			c.groupConsumer.MarkOffset(m, "")
 		}
 	}
