@@ -33,6 +33,18 @@ type KafkaConsumer struct {
 	partition  int32
 	eventChans map[chan *sarama.ConsumerMessage]bool
 	errors     chan error
+	autoMark   bool
+}
+
+// DisableAutoMark gives clients the ability to turn off auto-marking which means clients are responsible to mark the offset themselves
+// This is useful when clients want to retry certain message they fail to process
+func (consumer *KafkaConsumer) DisableAutoMark() {
+	consumer.autoMark = false
+}
+
+// MarkOffset lets clients mark offset manually after they process each message
+func (consumer *KafkaConsumer) MarkOffset(message *sarama.ConsumerMessage, metadata string) {
+	consumer.groupConsumer.MarkOffset(message, metadata)
 }
 
 // Consumer initializes a default consumer client for consuming messages.
@@ -67,6 +79,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		partition:     -1,
 		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
 		errors:        make(chan error, 1),
+		autoMark:      true,
 	}, nil
 }
 
@@ -96,6 +109,97 @@ func ConsumerFromPartition(topic string, partition int, brokers ...string) (*Kaf
 	}, nil
 }
 
+func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages chan *sarama.ConsumerMessage) {
+	for m := range msgs {
+		rawMessages <- m
+		// ------ Prometheus metrics ---------
+		bytesProcessed.
+			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+			Add(float64(len(m.Value)))
+		messagesProcessed.
+			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+			Add(1)
+		offsetMetrics.
+			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+			Set(float64(m.Offset))
+		// Only auto mark offset when automark is enabled and it's a group consumer
+		fmt.Println("Before marking offset check")
+		if c.autoMark && c.groupConsumer != nil {
+			fmt.Println("Marking offset")
+			c.groupConsumer.MarkOffset(m, "")
+		}
+	}
+}
+
+func constructConsumerMsg(ctx context.Context, rawMessages chan *sarama.ConsumerMessage, messages chan messaging.Event, errors chan error) {
+ConsumerLoop:
+	for {
+		select {
+		case m, ok := <-rawMessages:
+			if !ok {
+				break ConsumerLoop
+			}
+			// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
+			messages <- &event{
+				&Message{
+					Key:       m.Key,
+					Value:     m.Value,
+					Offset:    m.Offset,
+					Partition: m.Partition,
+					Time:      m.Timestamp,
+					Topic:     m.Topic,
+				},
+			}
+		case <-ctx.Done():
+			errors <- ctx.Err()
+			break ConsumerLoop
+		}
+	}
+	close(messages)
+}
+
+func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerMessage, offset int64) error {
+	pConsumer, err := (*c.singleConsumer).ConsumePartition(c.topic, c.partition, offset)
+	if err != nil {
+		return err
+	}
+	// cache open consumer to properly clean up later
+	c.partitionConsumer = pConsumer
+	// forward messages
+	go routeMsg(c, pConsumer.Messages(), rawMessages)
+	// forward errors
+	go func(errs <-chan *sarama.ConsumerError) {
+		for e := range errs {
+			c.errors <- e.Err
+			// ------ Prometheus metrics ---------
+			errorsCount.
+				WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
+				Add(1)
+			close(rawMessages)
+			break
+		}
+	}(pConsumer.Errors())
+
+	return nil
+}
+
+func (c *KafkaConsumer) processGroupConsumer(rawMessages chan *sarama.ConsumerMessage) {
+	// forward messages
+	go routeMsg(c, c.groupConsumer.Messages(), rawMessages)
+	// forward errors
+	go func(errs <-chan error) {
+		for e := range errs {
+			c.errors <- e
+			// ------ Prometheus metrics ---------
+			errorsCount.
+				WithLabelValues(c.groupID, "consumer", c.groupID, "").
+				Add(1)
+			close(rawMessages)
+			break
+		}
+	}(c.groupConsumer.Errors())
+}
+
 func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreator) (<-chan messaging.Event, error) {
 	options, ok := opts.Options().(*consumerOptions)
 	if !ok {
@@ -106,88 +210,16 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 	// cache this event channel for clean up
 	c.eventChans[rawMessages] = true
 
-	consume := func(msgs <-chan *sarama.ConsumerMessage) {
-		for m := range msgs {
-			rawMessages <- m
-			// ------ Prometheus metrics ---------
-			bytesProcessed.
-				WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-				Add(float64(len(m.Value)))
-			messagesProcessed.
-				WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-				Add(1)
-			offsetMetrics.
-				WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-				Set(float64(m.Offset))
-			// using consumer group should automatically commit offset
-			if c.groupConsumer != nil {
-				c.groupConsumer.MarkOffset(m, "")
-			}
-		}
-	}
 	if c.singleConsumer != nil {
-		pConsumer, err := (*c.singleConsumer).ConsumePartition(c.topic, c.partition, options.Offset)
+		err := c.processSingleConsumer(rawMessages, options.Offset)
 		if err != nil {
 			return nil, err
 		}
-		// cache open consumer to properly clean up later
-		c.partitionConsumer = pConsumer
-		// forward messages
-		go consume(pConsumer.Messages())
-		// forward errors
-		go func(errs <-chan *sarama.ConsumerError) {
-			for e := range errs {
-				c.errors <- e.Err
-				// ------ Prometheus metrics ---------
-				errorsCount.
-					WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
-					Add(1)
-				close(rawMessages)
-				break
-			}
-		}(pConsumer.Errors())
 	} else {
-		// forward messages
-		go consume(c.groupConsumer.Messages())
-		// forward errors
-		go func(errs <-chan error) {
-			for e := range errs {
-				c.errors <- e
-				// ------ Prometheus metrics ---------
-				errorsCount.
-					WithLabelValues(c.groupID, "consumer", c.groupID, "").
-					Add(1)
-				close(rawMessages)
-				break
-			}
-		}(c.groupConsumer.Errors())
+		c.processGroupConsumer(rawMessages)
 	}
-	go func() {
-	ConsumerLoop:
-		for {
-			select {
-			case m, ok := <-rawMessages:
-				if !ok {
-					break ConsumerLoop
-				}
-				// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
-				messages <- &event{
-					&Message{
-						Key:       m.Key,
-						Value:     m.Value,
-						Offset:    m.Offset,
-						Partition: m.Partition,
-						Time:      m.Timestamp,
-						Topic:     m.Topic,
-					},
-				}
-			case <-ctx.Done():
-				c.errors <- ctx.Err()
-				break ConsumerLoop
-			}
-		}
-		close(messages)
-	}()
+
+	go constructConsumerMsg(ctx, rawMessages, messages, c.errors)
 	return messages, nil
 }
 
