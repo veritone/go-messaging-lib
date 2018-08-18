@@ -125,10 +125,6 @@ func TestConsumerManualCommit(t *testing.T) {
 	err = producer.Produce(context.TODO(), msg1)
 	assert.NoError(t, err, "should have no error")
 
-	// Close producer
-	err = producer.Close()
-	assert.NoError(t, err, "should have no error")
-
 	// consumer1
 	consumerGroupId := "consumerGroup_TestConsumerManualCommit"
 	consumer1, err := kafka.Consumer(topic, consumerGroupId, broker)
@@ -139,10 +135,12 @@ func TestConsumerManualCommit(t *testing.T) {
 	assert.NoError(t, err, "should have no error")
 
 	// Wait for msg
+	var msgContent messaging.Event
 	var wg1 sync.WaitGroup
 	wg1.Add(1)
 	go func(<-chan messaging.Event) {
 		for i := range msgChan1 {
+			msgContent = i
 			spew.Dump(i)
 			break
 		}
@@ -171,5 +169,29 @@ func TestConsumerManualCommit(t *testing.T) {
 	err = consumer1.Close()
 	assert.NoError(t, err, "should have no error")
 	err = consumer2.Close()
+	assert.NoError(t, err, "should have no error")
+
+	// Restart consumer1
+	consumer1, err = kafka.Consumer(topic, consumerGroupId, broker)
+	assert.NoError(t, err, "should have no error")
+
+	msgChan1, err = consumer1.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	assert.NoError(t, err, "should have no error")
+
+	wg1.Add(1)
+	go func(<-chan messaging.Event) {
+		for i := range msgChan1 {
+			assert.Equal(t, msgContent, i, "Message should be original messsage")
+			spew.Dump(i)
+			break
+		}
+		wg1.Done()
+	}(msgChan1)
+	wg1.Wait()
+
+	// Close
+	err = consumer1.Close()
+	assert.NoError(t, err, "should have no error")
+	err = producer.Close()
 	assert.NoError(t, err, "should have no error")
 }
