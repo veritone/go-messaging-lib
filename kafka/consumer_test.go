@@ -108,3 +108,68 @@ func TestConsumerWithContext(t *testing.T) {
 	wg.Wait()
 	assert.Error(t, c.Close(), "have deadline exceeded error")
 }
+
+func TestConsumerManualCommit(t *testing.T) {
+	multiBrokerSetup(t)
+	defer tearDown(t)
+
+	topic := "topic_TestConsumerManualCommit"
+	broker := "kafka1:9093"
+	// Produce a message
+	producer, err := kafka.Producer(topic, kafka.StrategyRoundRobin, broker)
+	assert.NoError(t, err, "should be able to create Producer")
+
+	msg1, err := kafka.NewMessage("test", []byte("test1"))
+	assert.NoError(t, err, "should have no error")
+
+	err = producer.Produce(context.TODO(), msg1)
+	assert.NoError(t, err, "should have no error")
+
+	// Close producer
+	err = producer.Close()
+	assert.NoError(t, err, "should have no error")
+
+	// consumer1
+	consumerGroupId := "consumerGroup_TestConsumerManualCommit"
+	consumer1, err := kafka.Consumer(topic, consumerGroupId, broker)
+	assert.NoError(t, err, "should have no error")
+	consumer1.DisableAutoMark()
+
+	msgChan1, err := consumer1.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	assert.NoError(t, err, "should have no error")
+
+	// Wait for msg
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+	go func(<-chan messaging.Event) {
+		for i := range msgChan1 {
+			spew.Dump(i)
+			break
+		}
+		wg1.Done()
+	}(msgChan1)
+	wg1.Wait()
+
+	// consumer2
+	consumer2, err := kafka.Consumer(topic, consumerGroupId, broker)
+	assert.NoError(t, err, "should have no error")
+
+	msgChan2, err := consumer2.Consume(context.TODO(), kafka.ConsumerGroupOption)
+	assert.NoError(t, err, "should have no error")
+
+	// Consumer2 should receive no message even if it's consuming from the same topic
+	// Consumer2 should have a different partition than Consumer1
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+	go func(<-chan messaging.Event) {
+		assert.Equal(t, 0, len(msgChan2), "Channel should have no message")
+		wg2.Done()
+	}(msgChan2)
+	wg2.Wait()
+
+	// Close
+	err = consumer1.Close()
+	assert.NoError(t, err, "should have no error")
+	err = consumer2.Close()
+	assert.NoError(t, err, "should have no error")
+}
