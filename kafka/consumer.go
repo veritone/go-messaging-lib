@@ -67,9 +67,9 @@ func (consumer *KafkaConsumer) MarkOffset(msg messaging.Event, metadata string) 
 	return nil
 }
 
-// Consumer initializes a default consumer client for consuming messages.
+// NewConsumer initializes a default consumer client for consuming messages.
 // This function uses consumer group and all partitions will be load balanced
-func Consumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, error) {
+func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, error) {
 	if len(groupID) == 0 {
 		return nil, errors.New("must supply groupID to use high-level consumer")
 	}
@@ -115,8 +115,8 @@ func Consumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, erro
 	return kafkaClient, nil
 }
 
-// ConsumerFromPartition initializes a default consumer client for consuming messages
-func ConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
+// NewConsumerFromPartition initializes a default consumer client for consuming messages
+func NewConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true

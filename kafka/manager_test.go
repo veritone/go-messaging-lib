@@ -222,13 +222,13 @@ func TestManagerListTopicsLite(t *testing.T) {
 		log.Panic(err)
 	}
 
-	c1, _ := kafka.Consumer("create_topic_test_1", "g1", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
+	c1, _ := kafka.NewConsumer("create_topic_test_1", "g1", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
 	c1.Consume(context.TODO(), kafka.ConsumerGroupOption)
-	c2, _ := kafka.Consumer("create_topic_test_2", "g2", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
+	c2, _ := kafka.NewConsumer("create_topic_test_2", "g2", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
 	c2.Consume(context.TODO(), kafka.ConsumerGroupOption)
-	c3, err := kafka.Consumer("create_topic_test_3", "g3", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
+	c3, err := kafka.NewConsumer("create_topic_test_3", "g3", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
 	c3.Consume(context.TODO(), kafka.ConsumerGroupOption)
-	c4, err := kafka.Consumer("create_topic_test_1", "g4", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
+	c4, err := kafka.NewConsumer("create_topic_test_1", "g4", kafka.WithBrokers("localhost:9093", "localhost:9094", "localhost:9095"))
 	c4.Consume(context.TODO(), kafka.ConsumerGroupOption)
 
 	p1, _ := kafka.Producer("create_topic_test_1", kafka.StrategyRoundRobin, "localhost:9093", "localhost:9094", "localhost:9095")
@@ -281,7 +281,7 @@ func TestManagerGetPartitionInfo(t *testing.T) {
 	Err(t, p1.Produce(context.TODO(), msg))
 	Err(t, p1.Close())
 
-	c4, _ := kafka.Consumer("create_topic_test_1", "g4", kafka.WithBrokers("localhost:9093"))
+	c4, _ := kafka.NewConsumer("create_topic_test_1", "g4", kafka.WithBrokers("localhost:9093"))
 	q, _ := c4.Consume(context.TODO(), kafka.ConsumerGroupOption)
 	// consume only 2/3 messages
 	for i := 0; i < 6; i++ {
@@ -328,7 +328,7 @@ func TestManagerDeleteConsumerGroups(t *testing.T) {
 	wgP.Wait()
 
 	makeConsumer := func(wg *sync.WaitGroup, topic, group string, brokers ...string) {
-		c, _ := kafka.Consumer(topic, group, kafka.WithBrokers(brokers...))
+		c, _ := kafka.NewConsumer(topic, group, kafka.WithBrokers(brokers...))
 		c.Consume(context.TODO(), kafka.ConsumerGroupOption)
 		time.Sleep(2 * time.Second)
 		c.Close()
