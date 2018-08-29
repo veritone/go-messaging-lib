@@ -30,7 +30,7 @@ func Test_consumers(t *testing.T) {
 func testConsumerWithGroup(t *testing.T, topic, group string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	c, err := kafka.Consumer("t1", "g1", kafkaHost)
+	c, err := kafka.Consumer("t1", "g1", kafka.WithBrokers(kafkaHost))
 	assert.NoError(t, err)
 	q, err := c.Consume(context.Background(), kafka.ConsumerGroupOption)
 	assert.NoError(t, err)
@@ -67,7 +67,7 @@ func TestBasicConsumer(t *testing.T) {
 	multiBrokerSetup(t)
 	defer tearDown(t)
 
-	c, err := kafka.Consumer("test_topic", "g1", "kafka1:9093")
+	c, err := kafka.Consumer("test_topic", "g1", kafka.WithBrokers("kafka1:9093"))
 	assert.NoError(t, err, "should have a consumer connect to kafka")
 	ctx := context.Background()
 	q, err := c.Consume(ctx, kafka.ConsumerGroupOption)
@@ -90,7 +90,7 @@ func TestConsumerWithContext(t *testing.T) {
 	multiBrokerSetup(t)
 	defer tearDown(t)
 
-	c, err := kafka.Consumer("topic_with_context", "g1", "kafka1:9093")
+	c, err := kafka.Consumer("topic_with_context", "g1", kafka.WithBrokers("kafka1:9093"))
 	assert.NoError(t, err, "should have a consumer connect to kafka")
 	ctx := context.Background()
 	ctx, _ = context.WithDeadline(ctx, time.Now().Add(time.Second*3))
@@ -127,9 +127,8 @@ func TestConsumerManualCommit(t *testing.T) {
 
 	// consumer1
 	consumerGroupId := "consumerGroup_TestConsumerManualCommit"
-	consumer1, err := kafka.Consumer(topic, consumerGroupId, broker)
+	consumer1, err := kafka.Consumer(topic, consumerGroupId, kafka.WithBrokers(broker), kafka.WithDisableAutoMark())
 	assert.NoError(t, err, "should have no error")
-	consumer1.DisableAutoMark()
 
 	msgChan1, err := consumer1.Consume(context.TODO(), kafka.ConsumerGroupOption)
 	assert.NoError(t, err, "should have no error")
@@ -149,7 +148,7 @@ func TestConsumerManualCommit(t *testing.T) {
 	wg1.Wait()
 
 	// consumer2
-	consumer2, err := kafka.Consumer(topic, consumerGroupId, broker)
+	consumer2, err := kafka.Consumer(topic, consumerGroupId, kafka.WithBrokers(broker))
 	assert.NoError(t, err, "should have no error")
 
 	msgChan2, err := consumer2.Consume(context.TODO(), kafka.ConsumerGroupOption)
@@ -172,7 +171,7 @@ func TestConsumerManualCommit(t *testing.T) {
 	assert.NoError(t, err, "should have no error")
 
 	// Restart consumer1
-	consumer1, err = kafka.Consumer(topic, consumerGroupId, broker)
+	consumer1, err = kafka.Consumer(topic, consumerGroupId, kafka.WithBrokers(broker))
 	assert.NoError(t, err, "should have no error")
 
 	msgChan1, err = consumer1.Consume(context.TODO(), kafka.ConsumerGroupOption)
