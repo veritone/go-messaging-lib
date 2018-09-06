@@ -35,12 +35,24 @@ type KafkaConsumer struct {
 	eventChans map[chan *sarama.ConsumerMessage]bool
 	errors     chan error
 	autoMark   bool
+	brokers    []string
 }
 
-// DisableAutoMark gives clients the ability to turn off auto-marking which means clients are responsible to mark the offset themselves
+type ClientOption func(*KafkaConsumer)
+
+// WithDisableAutoMark gives clients the ability to turn off auto-marking which means clients are responsible to mark the offset themselves
 // This is useful when clients want to retry certain message they fail to process
-func (consumer *KafkaConsumer) DisableAutoMark() {
-	consumer.autoMark = false
+func WithDisableAutoMark() ClientOption {
+	return func(client *KafkaConsumer) {
+		client.autoMark = false
+	}
+}
+
+// WithBrokers specifies brokers for kafka consumer
+func WithBrokers(brokers ...string) ClientOption {
+	return func(client *KafkaConsumer) {
+		client.brokers = brokers
+	}
 }
 
 // MarkOffset lets clients mark offset manually after they process each message
@@ -55,12 +67,31 @@ func (consumer *KafkaConsumer) MarkOffset(msg messaging.Event, metadata string) 
 	return nil
 }
 
-// Consumer initializes a default consumer client for consuming messages.
+// NewConsumer initializes a default consumer client for consuming messages.
 // This function uses consumer group and all partitions will be load balanced
-func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) {
+func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, error) {
 	if len(groupID) == 0 {
 		return nil, errors.New("must supply groupID to use high-level consumer")
 	}
+
+	kafkaClient := &KafkaConsumer{
+		Mutex:      new(sync.Mutex),
+		groupID:    groupID,
+		topic:      topic,
+		partition:  -1,
+		eventChans: make(map[chan *sarama.ConsumerMessage]bool),
+		errors:     make(chan error, 1),
+	}
+
+	// Handle options
+	for _, optionFunc := range opts {
+		optionFunc(kafkaClient)
+	}
+
+	if len(kafkaClient.brokers) == 0 {
+		return nil, errors.New("brokers must be specified")
+	}
+
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
@@ -69,7 +100,7 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 	// before a consumer started listening
 	conf.Consumer.Offsets.Initial = sarama.OffsetOldest
 
-	client, err := cluster.NewClient(brokers, conf)
+	client, err := cluster.NewClient(kafkaClient.brokers, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -78,21 +109,14 @@ func Consumer(topic, groupID string, brokers ...string) (*KafkaConsumer, error) 
 		return nil, err
 	}
 
-	return &KafkaConsumer{
-		Mutex:         new(sync.Mutex),
-		client:        client.Client,
-		groupConsumer: consumer,
-		groupID:       groupID,
-		topic:         topic,
-		partition:     -1,
-		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
-		errors:        make(chan error, 1),
-		autoMark:      true,
-	}, nil
+	kafkaClient.client = client.Client
+	kafkaClient.groupConsumer = consumer
+
+	return kafkaClient, nil
 }
 
-// ConsumerFromPartition initializes a default consumer client for consuming messages
-func ConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
+// NewConsumerFromPartition initializes a default consumer client for consuming messages
+func NewConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
