@@ -81,6 +81,7 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 		partition:  -1,
 		eventChans: make(map[chan *sarama.ConsumerMessage]bool),
 		errors:     make(chan error, 1),
+		autoMark:   true,
 	}
 
 	// Handle options
