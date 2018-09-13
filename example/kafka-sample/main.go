@@ -229,13 +229,13 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 	host := q.Get("kafka_host")
 	port := q.Get("kafka_port")
 	var (
-		consumer messaging.Consumer
+		consumer kafka.Consumer
 		err      error
 		queue    <-chan messaging.Event
 	)
 	if len(group) == 0 {
 		p, _ := strconv.Atoi(partition)
-		consumer, err = kafka.ConsumerFromPartition(topic, p, host+":"+port)
+		consumer, err = kafka.NewConsumerFromPartition(topic, p, host+":"+port)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -245,7 +245,7 @@ func sub(rw http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("consuming from partition %d\n", p)
 	} else {
-		consumer, err = kafka.Consumer(topic, group, host+":"+port)
+		consumer, err = kafka.NewConsumer(topic, group, kafka.WithBrokers(host+":"+port))
 		if err != nil {
 			log.Panic(err)
 		}
