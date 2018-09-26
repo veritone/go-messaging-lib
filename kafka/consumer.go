@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
@@ -96,6 +97,8 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
+	conf.Consumer.Retry.Backoff = 1 * time.Second
+	conf.Consumer.Offsets.Retry.Max = 5
 
 	// This is necessary to read messages on newly created topics
 	// before a consumer started listening
@@ -121,6 +124,9 @@ func NewConsumerFromPartition(topic string, partition int, brokers ...string) (*
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
+	conf.Consumer.Retry.Backoff = 1 * time.Second
+	conf.Consumer.Offsets.Retry.Max = 5
+
 	client, err := sarama.NewClient(brokers, conf)
 	if err != nil {
 		return nil, err

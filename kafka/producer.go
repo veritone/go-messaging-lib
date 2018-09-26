@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/davecgh/go-spew/spew"
@@ -37,8 +38,12 @@ const (
 func Producer(topic string, strategy Strategy, brokers ...string) (messaging.Producer, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V1_1_0_0
+	config.Producer.Retry.Max = 5
+	config.Producer.Retry.Backoff = 1 * time.Second
 	config.Producer.Return.Errors = true
 	config.Producer.Return.Successes = true
+	config.Metadata.Retry.Max = 5
+	config.Metadata.Retry.Backoff = 1 * time.Second
 
 	var balancer sarama.PartitionerConstructor
 	switch strategy {
