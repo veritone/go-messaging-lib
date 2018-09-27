@@ -99,6 +99,8 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	conf.Consumer.Return.Errors = true
 	conf.Consumer.Retry.Backoff = 1 * time.Second
 	conf.Consumer.Offsets.Retry.Max = 5
+	conf.Metadata.Retry.Max = 5
+	conf.Metadata.Retry.Backoff = 1 * time.Second
 
 	// This is necessary to read messages on newly created topics
 	// before a consumer started listening
