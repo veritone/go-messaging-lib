@@ -128,6 +128,8 @@ func NewConsumerFromPartition(topic string, partition int, brokers ...string) (*
 	conf.Consumer.Return.Errors = true
 	conf.Consumer.Retry.Backoff = 1 * time.Second
 	conf.Consumer.Offsets.Retry.Max = 5
+	conf.Metadata.Retry.Max = 5
+	conf.Metadata.Retry.Backoff = 1 * time.Second
 
 	client, err := sarama.NewClient(brokers, conf)
 	if err != nil {
