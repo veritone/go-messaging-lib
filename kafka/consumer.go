@@ -30,13 +30,14 @@ type KafkaConsumer struct {
 	// in-memory cache for simple partition consumer
 	partitionConsumer sarama.PartitionConsumer
 
-	groupID    string
-	topic      string
-	partition  int32
-	eventChans map[chan *sarama.ConsumerMessage]bool
-	errors     chan error
-	autoMark   bool
-	brokers    []string
+	groupID       string
+	topic         string
+	partition     int32
+	eventChans    map[chan *sarama.ConsumerMessage]bool
+	errors        chan error
+	autoMark      bool
+	brokers       []string
+	initialOffset int64
 }
 
 type ClientOption func(*KafkaConsumer)
@@ -53,6 +54,13 @@ func WithDisableAutoMark() ClientOption {
 func WithBrokers(brokers ...string) ClientOption {
 	return func(client *KafkaConsumer) {
 		client.brokers = brokers
+	}
+}
+
+// The initial offset to use if no offset was previously committed.
+func WithInitialOffset(offset int64) ClientOption {
+	return func(client *KafkaConsumer) {
+		client.initialOffset = offset
 	}
 }
 
@@ -76,13 +84,14 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	}
 
 	kafkaClient := &KafkaConsumer{
-		Mutex:      new(sync.Mutex),
-		groupID:    groupID,
-		topic:      topic,
-		partition:  -1,
-		eventChans: make(map[chan *sarama.ConsumerMessage]bool),
-		errors:     make(chan error, 1),
-		autoMark:   true,
+		Mutex:         new(sync.Mutex),
+		groupID:       groupID,
+		topic:         topic,
+		partition:     -1,
+		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
+		errors:        make(chan error, 1),
+		autoMark:      true,
+		initialOffset: sarama.OffsetOldest,
 	}
 
 	// Handle options
@@ -104,7 +113,7 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 
 	// This is necessary to read messages on newly created topics
 	// before a consumer started listening
-	conf.Consumer.Offsets.Initial = sarama.OffsetOldest
+	conf.Consumer.Offsets.Initial = kafkaClient.initialOffset
 
 	client, err := cluster.NewClient(kafkaClient.brokers, conf)
 	if err != nil {
@@ -122,12 +131,13 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 }
 
 // NewConsumerFromPartition initializes a default consumer client for consuming messages
-func NewConsumerFromPartition(topic string, partition int, brokers ...string) (*KafkaConsumer, error) {
+func NewConsumerFromPartition(topic string, partition int, initialOffset int64, brokers ...string) (*KafkaConsumer, error) {
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
 	conf.Consumer.Retry.Backoff = 1 * time.Second
 	conf.Consumer.Offsets.Retry.Max = 5
+	conf.Consumer.Offsets.Initial = initialOffset
 	conf.Metadata.Retry.Max = 5
 	conf.Metadata.Retry.Backoff = 1 * time.Second
 
