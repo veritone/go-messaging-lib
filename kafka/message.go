@@ -9,11 +9,13 @@ import (
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
-// OffsetOldest lets consumers to retrieve the oldest possible message
-const OffsetOldest = -1
+// OffsetNewest lets consumers retrieve the newest possible message.
+// It must be the same value as defined in sarama.
+const OffsetNewest = -1
 
-// OffsetNewest lets consumers to retrieve the newest possible message
-const OffsetNewest = -2
+// OffsetOldest lets consumers retrieve the oldest possible message.
+// It must be the same value as defined in sarama.
+const OffsetOldest = -2
 
 // Message is a data structure representing kafka messages
 type Message struct {
