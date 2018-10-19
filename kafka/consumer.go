@@ -17,9 +17,10 @@ import (
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
-var (
-	Logger *log.Logger
-)
+// SetLogger turns on sarama log
+func SetLogger(log *log.Logger) {
+	sarama.Logger = log
+}
 
 func init() {
 	// disable go-metrics. We use prometheus for instrumentation.
@@ -111,10 +112,6 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 		return nil, errors.New("Initial offset must be -1 or -2")
 	}
 
-	if Logger != nil {
-		sarama.Logger = Logger
-	}
-
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
@@ -164,10 +161,6 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 	}
 	if kafkaClient.initialOffset >= 0 {
 		return nil, errors.New("Initial offset must be -1 or -2")
-	}
-
-	if Logger != nil {
-		sarama.Logger = Logger
 	}
 
 	conf := sarama.NewConfig()

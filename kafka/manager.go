@@ -21,10 +21,6 @@ type KafkaManager struct {
 
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
 func Manager(hosts ...string) (*KafkaManager, error) {
-	if Logger != nil {
-		sarama.Logger = Logger
-	}
-
 	c := sarama.NewConfig()
 	c.Admin.Timeout = 10 * time.Second
 
