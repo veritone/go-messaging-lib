@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Shopify/sarama"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"github.com/veritone/go-messaging-lib"
@@ -47,7 +48,7 @@ func testConsumerWithGroup(t *testing.T, topic, group string) {
 func testConsumerFromPartition(t *testing.T, topic string, offset int64) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	c, err := kafka.NewConsumerFromPartition("t2", 0, kafka.OffsetOldest, kafkaHost)
+	c, err := kafka.NewConsumerFromPartition("t2", 0, kafka.WithInitialOffset(sarama.OffsetOldest), kafka.WithBrokers(kafkaHost))
 	assert.NoError(t, err)
 	q, err := c.Consume(context.Background(), kafka.NewConsumerOption(kafka.OffsetOldest))
 	assert.NoError(t, err)
@@ -278,3 +279,100 @@ func TestConsumerInitialOffsetSetToOldest(t *testing.T) {
 	err = consumer.Close()
 	assert.NoError(t, err, "Failed to close consumer")
 }
+
+// func TestConsumerManualCommitRestart(t *testing.T) {
+// 	multiBrokerSetup(t)
+// 	defer tearDown(t)
+
+// 	topic := "topic_TestConsumerManualCommitRestart"
+// 	broker := "kafka1:9093"
+
+// 	// Produce a message
+// 	producer, err := kafka.Producer(topic, kafka.StrategyRoundRobin, broker)
+// 	assert.NoError(t, err, "should be able to create Producer")
+
+// 	msg1, err := kafka.NewMessage("test", []byte("test"))
+// 	assert.NoError(t, err, "should have no error")
+
+// 	msg2, err := kafka.NewMessage("test1", []byte("test1"))
+// 	assert.NoError(t, err, "should have no error")
+
+// 	msg3, err := kafka.NewMessage("test2", []byte("test2"))
+// 	assert.NoError(t, err, "should have no error")
+
+// 	err = producer.Produce(context.TODO(), msg1)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	err = producer.Produce(context.TODO(), msg2)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	err = producer.Produce(context.TODO(), msg3)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	// consumer1
+// 	consumerGroupId := "consumerGroup_TestConsumerManualCommitRestart"
+// 	consumer1, err := kafka.NewConsumer(topic, consumerGroupId, kafka.WithBrokers(broker), kafka.WithDisableAutoMark())
+// 	assert.NoError(t, err, "should have no error")
+
+// 	msgChan1, err := consumer1.Consume(context.TODO(), kafka.ConsumerGroupOption)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	// Wait for msg
+// 	var wg1 sync.WaitGroup
+// 	wg1.Add(1)
+// 	go func(<-chan messaging.Event) {
+// 		count := 0
+// 		for i := range msgChan1 {
+// 			spew.Dump("iteration consume")
+// 			if count == 0 || count == 1 {
+// 				spew.Dump("mark offset")
+// 				consumer1.MarkOffset(i, "")
+// 			}
+// 			spew.Dump(i)
+
+// 			if count >= 2 {
+// 				spew.Dump("about to exit")
+// 				break
+// 			}
+// 			count++
+// 		}
+// 		wg1.Done()
+// 	}(msgChan1)
+// 	wg1.Wait()
+
+// 	// Close consumer1
+// 	err = consumer1.Close()
+// 	assert.NoError(t, err, "should have no error")
+
+// 	msg4, err := kafka.NewMessage("test3", []byte("test3"))
+// 	assert.NoError(t, err, "should have no error")
+
+// 	err = producer.Produce(context.TODO(), msg4)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	// Open consumer1 again
+// 	consumer2, err := kafka.NewConsumer(topic, consumerGroupId, kafka.WithBrokers(broker), kafka.WithDisableAutoMark())
+// 	assert.NoError(t, err, "should have no error")
+
+// 	msgChan2, err := consumer2.Consume(context.TODO(), kafka.ConsumerGroupOption)
+// 	assert.NoError(t, err, "should have no error")
+
+// 	var wg2 sync.WaitGroup
+// 	wg2.Add(1)
+// 	spew.Dump("before go routine")
+// 	go func(<-chan messaging.Event) {
+// 		spew.Dump("before consuming msgChan2")
+// 		for i := range msgChan2 {
+// 			spew.Dump(i)
+// 			// break
+// 		}
+// 		wg2.Done()
+// 	}(msgChan2)
+// 	wg2.Wait()
+
+// 	// Close consumer1
+// 	err = consumer2.Close()
+// 	assert.NoError(t, err, "should have no error")
+// 	err = producer.Close()
+// 	assert.NoError(t, err, "should have no error")
+// }

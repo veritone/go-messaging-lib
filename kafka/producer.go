@@ -45,6 +45,10 @@ func Producer(topic string, strategy Strategy, brokers ...string) (messaging.Pro
 	config.Metadata.Retry.Max = 5
 	config.Metadata.Retry.Backoff = 1 * time.Second
 
+	if Logger != nil {
+		sarama.Logger = Logger
+	}
+
 	var balancer sarama.PartitionerConstructor
 	switch strategy {
 	case StrategyRoundRobin:
