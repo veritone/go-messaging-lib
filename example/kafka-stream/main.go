@@ -53,7 +53,10 @@ func write(rw http.ResponseWriter, r *http.Request) {
 	topic := q.Get("topic")
 	pwd, _ := os.Getwd()
 	txt, _ := ioutil.ReadFile(pwd + "/test.txt")
-	p := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
+	p, err := kafka.Producer(topic, kafka.StrategyRoundRobin, "kafka1:9092")
+	if err != nil {
+		log.Panic(err)
+	}
 	writer, err := kafka.NewStreamWriter(p, "")
 	if err != nil {
 		log.Panic(err)
@@ -75,7 +78,7 @@ func read(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	topic := q.Get("topic")
 
-	c, err := kafka.Consumer(topic, "g1", "kafka1:9092")
+	c, err := kafka.NewConsumer(topic, "g1", kafka.WithBrokers("kafka1:9092"))
 	if err != nil {
 		log.Panic(err)
 	}

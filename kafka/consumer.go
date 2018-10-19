@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,11 @@ import (
 	"github.com/rcrowley/go-metrics"
 	messaging "github.com/veritone/go-messaging-lib"
 )
+
+// SetLogger turns on sarama log
+func SetLogger(log *log.Logger) {
+	sarama.Logger = log
+}
 
 func init() {
 	// disable go-metrics. We use prometheus for instrumentation.
@@ -57,7 +63,7 @@ func WithBrokers(brokers ...string) ClientOption {
 	}
 }
 
-// The initial offset to use if no offset was previously committed.
+// WithInitialOffset specifies the initial offset to use if no offset was previously committed.
 func WithInitialOffset(offset int64) ClientOption {
 	return func(client *KafkaConsumer) {
 		client.initialOffset = offset
@@ -102,6 +108,9 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	if len(kafkaClient.brokers) == 0 {
 		return nil, errors.New("brokers must be specified")
 	}
+	if !isValidInitialOffset(kafkaClient.initialOffset) {
+		return nil, errors.New("Initial offset must be -1 or -2")
+	}
 
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_1_0_0
@@ -131,17 +140,39 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 }
 
 // NewConsumerFromPartition initializes a default consumer client for consuming messages
-func NewConsumerFromPartition(topic string, partition int, initialOffset int64, brokers ...string) (*KafkaConsumer, error) {
+func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption) (*KafkaConsumer, error) {
+	kafkaClient := &KafkaConsumer{
+		Mutex:         new(sync.Mutex),
+		groupID:       "",
+		topic:         topic,
+		partition:     int32(partition),
+		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
+		errors:        make(chan error, 1),
+		initialOffset: sarama.OffsetOldest,
+	}
+
+	// Handle options
+	for _, optionFunc := range opts {
+		optionFunc(kafkaClient)
+	}
+
+	if len(kafkaClient.brokers) == 0 {
+		return nil, errors.New("brokers must be specified")
+	}
+	if !isValidInitialOffset(kafkaClient.initialOffset) {
+		return nil, errors.New("Initial offset must be -1 or -2")
+	}
+
 	conf := sarama.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
 	conf.Consumer.Retry.Backoff = 1 * time.Second
 	conf.Consumer.Offsets.Retry.Max = 5
-	conf.Consumer.Offsets.Initial = initialOffset
+	conf.Consumer.Offsets.Initial = kafkaClient.initialOffset
 	conf.Metadata.Retry.Max = 5
 	conf.Metadata.Retry.Backoff = 1 * time.Second
 
-	client, err := sarama.NewClient(brokers, conf)
+	client, err := sarama.NewClient(kafkaClient.brokers, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -150,16 +181,10 @@ func NewConsumerFromPartition(topic string, partition int, initialOffset int64, 
 		return nil, err
 	}
 
-	return &KafkaConsumer{
-		Mutex:          new(sync.Mutex),
-		client:         client,
-		groupID:        "",
-		topic:          topic,
-		partition:      int32(partition),
-		singleConsumer: &consumer,
-		eventChans:     make(map[chan *sarama.ConsumerMessage]bool),
-		errors:         make(chan error, 1),
-	}, nil
+	kafkaClient.client = client
+	kafkaClient.singleConsumer = &consumer
+
+	return kafkaClient, nil
 }
 
 func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages chan *sarama.ConsumerMessage) {
@@ -334,4 +359,8 @@ func (c *KafkaConsumer) Close() error {
 			strings.Join(errorStrs, "\n"))
 	}
 	return nil
+}
+
+func isValidInitialOffset(offset int64) bool {
+	return offset == sarama.OffsetOldest || offset == sarama.OffsetNewest
 }

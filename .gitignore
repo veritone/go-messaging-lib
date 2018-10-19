@@ -15,4 +15,5 @@ vendor/
 **/full-stack
 .kafka-*/
 example/kafka-sample/kafka-sample
-
+example/kafka-bin/kafka-bin
+example/kafka-stream/kafka-stream
