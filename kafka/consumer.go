@@ -108,7 +108,7 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	if len(kafkaClient.brokers) == 0 {
 		return nil, errors.New("brokers must be specified")
 	}
-	if kafkaClient.initialOffset >= 0 {
+	if !isValidInitialOffset(kafkaClient.initialOffset) {
 		return nil, errors.New("Initial offset must be -1 or -2")
 	}
 
@@ -159,7 +159,7 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 	if len(kafkaClient.brokers) == 0 {
 		return nil, errors.New("brokers must be specified")
 	}
-	if kafkaClient.initialOffset >= 0 {
+	if !isValidInitialOffset(kafkaClient.initialOffset) {
 		return nil, errors.New("Initial offset must be -1 or -2")
 	}
 
@@ -359,4 +359,8 @@ func (c *KafkaConsumer) Close() error {
 			strings.Join(errorStrs, "\n"))
 	}
 	return nil
+}
+
+func isValidInitialOffset(offset int64) bool {
+	return offset == sarama.OffsetOldest || offset == sarama.OffsetNewest
 }
