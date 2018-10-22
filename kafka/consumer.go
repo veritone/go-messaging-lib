@@ -115,10 +115,10 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 	conf := cluster.NewConfig()
 	conf.Version = sarama.V1_1_0_0
 	conf.Consumer.Return.Errors = true
-	conf.Consumer.Retry.Backoff = 2 * time.Second
+	conf.Consumer.Retry.Backoff = 1 * time.Second
 	conf.Consumer.Offsets.Retry.Max = 5
 	conf.Metadata.Retry.Max = 5
-	conf.Metadata.Retry.Backoff = 2 * time.Second
+	conf.Metadata.Retry.Backoff = 1 * time.Second
 
 	// This is necessary to read messages on newly created topics
 	// before a consumer started listening
@@ -200,6 +200,10 @@ func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages
 		offsetMetrics.
 			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
 			Set(float64(m.Offset))
+		// For testing: Log when got a message
+		prefixFromEngine := ""
+		fmt.Printf(prefixFromEngine+"Got a message save to queue: Topic: %s; groupID: %s; Partition: %d", m.Topic, c.groupID, m.Partition)
+
 		// Only auto mark offset when automark is enabled and it's a group consumer
 		if c.autoMark && c.groupConsumer != nil {
 			c.groupConsumer.MarkOffset(m, "")
