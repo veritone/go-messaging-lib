@@ -23,14 +23,14 @@ type KafkaManager struct {
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
-	c.Admin.Timeout = 10 * time.Second
+	c.Admin.Timeout = 15 * time.Second
 
 	// default version
 	c.Version = sarama.V1_1_0_0
 
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V1_1_0_0
-	clusterC.Admin.Timeout = 10 * time.Second
+	clusterC.Admin.Timeout = 15 * time.Second
 
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
@@ -51,7 +51,7 @@ func Manager(hosts ...string) (*KafkaManager, error) {
 	return &KafkaManager{
 		single:          s,
 		multi:           *m,
-		timeOutDuration: 10 * time.Second,
+		timeOutDuration: 15 * time.Second,
 	}, nil
 }
 
