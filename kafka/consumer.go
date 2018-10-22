@@ -39,7 +39,6 @@ type KafkaConsumer struct {
 	groupID       string
 	topic         string
 	partition     int32
-	eventChans    map[chan *sarama.ConsumerMessage]bool
 	errors        chan error
 	autoMark      bool
 	brokers       []string
@@ -94,7 +93,6 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 		groupID:       groupID,
 		topic:         topic,
 		partition:     -1,
-		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
 		errors:        make(chan error, 1),
 		autoMark:      true,
 		initialOffset: sarama.OffsetOldest,
@@ -146,7 +144,6 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 		groupID:       "",
 		topic:         topic,
 		partition:     int32(partition),
-		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
 		errors:        make(chan error, 1),
 		initialOffset: sarama.OffsetOldest,
 	}
@@ -187,39 +184,16 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 	return kafkaClient, nil
 }
 
-func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages chan *sarama.ConsumerMessage) {
-	for m := range msgs {
-		rawMessages <- m
-		// ------ Prometheus metrics ---------
-		bytesProcessed.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Add(float64(len(m.Value)))
-		messagesProcessed.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Add(1)
-		offsetMetrics.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Set(float64(m.Offset))
-		// For testing: Log when got a message
-		prefixFromEngine := ""
-		fmt.Printf(prefixFromEngine+"Got a message save to queue: Topic: %s; groupID: %s; Partition: %d", m.Topic, c.groupID, m.Partition)
-
-		// Only auto mark offset when automark is enabled and it's a group consumer
-		if c.autoMark && c.groupConsumer != nil {
-			c.groupConsumer.MarkOffset(m, "")
-		}
-	}
-}
-
-func constructConsumerMsg(ctx context.Context, rawMessages chan *sarama.ConsumerMessage, messages chan messaging.Event, errors chan error) {
-ConsumerLoop:
+func routeMsg(ctx context.Context, c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, messages chan messaging.Event, errors chan error) {
+	defer close(messages)
 	for {
 		select {
-		case m, ok := <-rawMessages:
+		case m, ok := <-msgs:
 			if !ok {
-				break ConsumerLoop
+				return
 			}
-			// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
+			log.Printf("Obtained message: Topic: %s; groupID: %s; Partition: %d, Value: %s", m.Topic, c.groupID, m.Partition, string(m.Value))
+			c.groupConsumer.MarkOffset(m, "")
 			messages <- &event{
 				&Message{
 					Key:       m.Key,
@@ -232,13 +206,12 @@ ConsumerLoop:
 			}
 		case <-ctx.Done():
 			errors <- ctx.Err()
-			break ConsumerLoop
+			return
 		}
 	}
-	close(messages)
 }
 
-func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerMessage, offset int64) error {
+func (c *KafkaConsumer) processSingleConsumer(ctx context.Context, messages chan messaging.Event, offset int64, errors chan error) error {
 	pConsumer, err := (*c.singleConsumer).ConsumePartition(c.topic, c.partition, offset)
 	if err != nil {
 		return err
@@ -246,7 +219,7 @@ func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerM
 	// cache open consumer to properly clean up later
 	c.partitionConsumer = pConsumer
 	// forward messages
-	go routeMsg(c, pConsumer.Messages(), rawMessages)
+	go routeMsg(ctx, c, pConsumer.Messages(), messages, errors)
 	// forward errors
 	go func(errs <-chan *sarama.ConsumerError) {
 		for e := range errs {
@@ -255,7 +228,6 @@ func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerM
 			errorsCount.
 				WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
 				Add(1)
-			close(rawMessages)
 			break
 		}
 	}(pConsumer.Errors())
@@ -263,9 +235,9 @@ func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerM
 	return nil
 }
 
-func (c *KafkaConsumer) processGroupConsumer(rawMessages chan *sarama.ConsumerMessage) {
+func (c *KafkaConsumer) processGroupConsumer(ctx context.Context, messages chan messaging.Event, errors chan error) {
 	// forward messages
-	go routeMsg(c, c.groupConsumer.Messages(), rawMessages)
+	go routeMsg(ctx, c, c.groupConsumer.Messages(), messages, errors)
 	// forward errors
 	go func(errs <-chan error) {
 		for e := range errs {
@@ -274,7 +246,6 @@ func (c *KafkaConsumer) processGroupConsumer(rawMessages chan *sarama.ConsumerMe
 			errorsCount.
 				WithLabelValues(c.groupID, "consumer", c.groupID, "").
 				Add(1)
-			close(rawMessages)
 			break
 		}
 	}(c.groupConsumer.Errors())
@@ -286,20 +257,14 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 		return nil, errors.New("invalid option creator, did you use NewConsumerOption or ConsumerGroupOption?")
 	}
 	messages := make(chan messaging.Event, 0)
-	rawMessages := make(chan *sarama.ConsumerMessage, 0)
-	// cache this event channel for clean up
-	c.eventChans[rawMessages] = true
-
 	if c.singleConsumer != nil {
-		err := c.processSingleConsumer(rawMessages, options.Offset)
+		err := c.processSingleConsumer(ctx, messages, options.Offset, c.errors)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		c.processGroupConsumer(rawMessages)
+		c.processGroupConsumer(ctx, messages, c.errors)
 	}
-
-	go constructConsumerMsg(ctx, rawMessages, messages, c.errors)
 	return messages, nil
 }
 
@@ -350,11 +315,6 @@ func (c *KafkaConsumer) Close() error {
 	// drains all errors and return them.
 	for errs := range c.errors {
 		errorStrs = append(errorStrs, errs.Error())
-	}
-	// close all event channels, client should be able to escape
-	// out of a range loop on the event channel
-	for msgChan := range c.eventChans {
-		close(msgChan)
 	}
 	if len(errorStrs) > 0 {
 		return fmt.Errorf(
