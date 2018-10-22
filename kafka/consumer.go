@@ -285,8 +285,8 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 	if !ok {
 		return nil, errors.New("invalid option creator, did you use NewConsumerOption or ConsumerGroupOption?")
 	}
-	messages := make(chan messaging.Event, 1)
-	rawMessages := make(chan *sarama.ConsumerMessage, 1)
+	messages := make(chan messaging.Event, 0)
+	rawMessages := make(chan *sarama.ConsumerMessage, 0)
 	// cache this event channel for clean up
 	c.eventChans[rawMessages] = true
 
