@@ -2,6 +2,8 @@ package kafka_test
 
 import (
 	"context"
+	"log"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 )
 
 func Test_consumers(t *testing.T) {
+	kafka.SetLogger(log.New(os.Stdout, "[sarama] ", log.LstdFlags))
 	multiBrokerSetup(t)
 	defer tearDown(t)
 	// Start and close simple consumer with oldest offset

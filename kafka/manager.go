@@ -15,33 +15,43 @@ import (
 )
 
 type KafkaManager struct {
-	single sarama.Client
-	multi  cluster.Client
+	single          sarama.Client
+	multi           cluster.Client
+	timeOutDuration time.Duration
 }
 
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
-	c.Admin.Timeout = 10 * time.Second
+	c.Admin.Timeout = 15 * time.Second
 
 	// default version
 	c.Version = sarama.V1_1_0_0
 
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V1_1_0_0
-	clusterC.Admin.Timeout = 10 * time.Second
+	clusterC.Admin.Timeout = 15 * time.Second
 
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
 		return nil, err
 	}
+
+	// Make sure we are able to reach the controller
+	_, err = s.Controller()
+	if err != nil {
+		return nil, err
+	}
+
 	m, err := cluster.NewClient(hosts, clusterC)
 	if err != nil {
 		return nil, err
 	}
+
 	return &KafkaManager{
-		single: s,
-		multi:  *m,
+		single:          s,
+		multi:           *m,
+		timeOutDuration: 15 * time.Second,
 	}, nil
 }
 
@@ -316,7 +326,8 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	}
 
 	t := &sarama.CreateTopicsRequest{}
-	t.Timeout = time.Second * 10
+	t.Timeout = m.timeOutDuration
+	t.Version = 1
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
 	for _, topic := range topics {
 		t.TopicDetails[topic] = &sarama.TopicDetail{
@@ -331,11 +342,6 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	if err != nil {
 		return err
 	}
-	err = connectBroker(controllerBroker, m.single.Config())
-	if err != nil {
-		return err
-	}
-	defer controllerBroker.Close()
 
 	res, err := controllerBroker.CreateTopics(t)
 	if err != nil {
@@ -358,15 +364,11 @@ func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 	if err != nil {
 		return err
 	}
-	err = connectBroker(controllerBroker, m.single.Config())
-	if err != nil {
-		return err
-	}
-	defer controllerBroker.Close()
 
 	res, err := controllerBroker.DeleteTopics(&sarama.DeleteTopicsRequest{
 		Topics:  topics,
-		Timeout: time.Second * 5,
+		Timeout: m.timeOutDuration,
+		Version: 1,
 	})
 	if err != nil {
 		return err
@@ -428,7 +430,7 @@ func (m *KafkaManager) AddPartitions(_ context.Context, req TopicPartitionReques
 		}
 	}
 	res, err := controllerBroker.CreatePartitions(&sarama.CreatePartitionsRequest{
-		Timeout:         time.Second * 5,
+		Timeout:         m.timeOutDuration,
 		ValidateOnly:    false,
 		TopicPartitions: input,
 	})
