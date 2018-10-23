@@ -96,17 +96,21 @@ func (p *producer) Produce(_ context.Context, msg messaging.Messager, _ ...messa
 		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
 	}
 	var err error
-	p.asyncProducer.Input() <- &sarama.ProducerMessage{
+	saramaMsg := &sarama.ProducerMessage{
 		Topic: p.topic,
 		Key:   sarama.ByteEncoder(kafkaMsg.Key),
 		Value: sarama.ByteEncoder(kafkaMsg.Value),
 	}
+	p.asyncProducer.Input() <- saramaMsg
 	select {
 	case <-p.asyncProducer.Successes():
 		break
 	case err = <-p.asyncProducer.Errors():
 		break
 	}
+	
+	kafkaMsg.Partition = saramaMsg.Partition
+	kafkaMsg.Offset = saramaMsg.Offset
 	return err
 }
 
