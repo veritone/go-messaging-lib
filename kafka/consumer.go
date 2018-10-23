@@ -193,7 +193,6 @@ func routeMsg(ctx context.Context, c *KafkaConsumer, msgs <-chan *sarama.Consume
 				return
 			}
 			log.Printf("Obtained message: Topic: %s; groupID: %s; Partition: %d, Value: %s", m.Topic, c.groupID, m.Partition, string(m.Value))
-			c.groupConsumer.MarkOffset(m, "")
 			messages <- &event{
 				&Message{
 					Key:       m.Key,
@@ -204,6 +203,8 @@ func routeMsg(ctx context.Context, c *KafkaConsumer, msgs <-chan *sarama.Consume
 					Topic:     m.Topic,
 				},
 			}
+			log.Println("Sent obtained message to chan")
+			c.groupConsumer.MarkOffset(m, "")
 		case <-ctx.Done():
 			errors <- ctx.Err()
 			return
