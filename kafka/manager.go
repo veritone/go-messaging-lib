@@ -27,10 +27,14 @@ func Manager(hosts ...string) (*KafkaManager, error) {
 
 	// default version
 	c.Version = sarama.V1_1_0_0
+	c.Net.DialTimeout = 60 * time.Second
+	c.Net.ReadTimeout = 60 * time.Second
 
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V1_1_0_0
 	clusterC.Admin.Timeout = 30 * time.Second
+	clusterC.Net.DialTimeout = 60 * time.Second
+	clusterC.Net.DialTimeout = 60 * time.Second
 
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
