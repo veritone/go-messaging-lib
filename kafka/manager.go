@@ -326,10 +326,12 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	}
 
 	t := &sarama.CreateTopicsRequest{}
+	log.Printf("config: %v", v)
 	if v.Timeout == time.Duration(0) {
 		v.Timeout = m.timeOutDuration
 	}
 	t.Timeout = v.Timeout
+	log.Printf("timeout: %v", t.Timeout)
 
 	t.Version = 1
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
