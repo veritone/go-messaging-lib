@@ -326,7 +326,11 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	}
 
 	t := &sarama.CreateTopicsRequest{}
-	t.Timeout = m.timeOutDuration
+	if v.Timeout == time.Duration(0) {
+		v.Timeout = m.timeOutDuration
+	}
+	t.Timeout = v.Timeout
+
 	t.Version = 1
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
 	for _, topic := range topics {
@@ -544,6 +548,7 @@ type CreateTopicOptions struct {
 	ReplicationFactor int16
 	ReplicaAssignment map[int32][]int32
 	ConfigEntries     map[string]*string
+	Timeout           time.Duration
 }
 
 // Options returns the compatible options for creating topics
