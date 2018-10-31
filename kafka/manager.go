@@ -24,8 +24,6 @@ type KafkaManager struct {
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
 	c.Admin.Timeout = 30 * time.Second
-	c.Net.DialTimeout = 60 * time.Second
-	c.Net.ReadTimeout = 60 * time.Second
 
 	// default version
 	c.Version = sarama.V1_1_0_0
@@ -33,8 +31,6 @@ func Manager(hosts ...string) (*KafkaManager, error) {
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V1_1_0_0
 	clusterC.Admin.Timeout = 30 * time.Second
-	clusterC.Net.DialTimeout = 60 * time.Second
-	clusterC.Net.ReadTimeout = 60 * time.Second
 
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
@@ -330,12 +326,10 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 	}
 
 	t := &sarama.CreateTopicsRequest{}
-	log.Printf("config: %v", v)
 	if v.Timeout == time.Duration(0) {
 		v.Timeout = m.timeOutDuration
 	}
 	t.Timeout = v.Timeout
-	log.Printf("timeout: %v", t.Timeout)
 
 	t.Version = 2
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
