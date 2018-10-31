@@ -31,7 +31,7 @@ type KafkaConsumer struct {
 	*sync.Mutex
 
 	client         sarama.Client
-	singleConsumer *sarama.Consumer
+	singleConsumer sarama.Consumer
 	groupConsumer  *cluster.Consumer
 	// in-memory cache for simple partition consumer
 	partitionConsumer sarama.PartitionConsumer
@@ -39,7 +39,7 @@ type KafkaConsumer struct {
 	groupID       string
 	topic         string
 	partition     int32
-	eventChans    map[chan *sarama.ConsumerMessage]bool
+	eventChans    map[chan messaging.Event]bool
 	errors        chan error
 	autoMark      bool
 	brokers       []string
@@ -94,7 +94,7 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 		groupID:       groupID,
 		topic:         topic,
 		partition:     -1,
-		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
+		eventChans:    make(map[chan messaging.Event]bool),
 		errors:        make(chan error, 1),
 		autoMark:      true,
 		initialOffset: sarama.OffsetOldest,
@@ -146,7 +146,7 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 		groupID:       "",
 		topic:         topic,
 		partition:     int32(partition),
-		eventChans:    make(map[chan *sarama.ConsumerMessage]bool),
+		eventChans:    make(map[chan messaging.Event]bool),
 		errors:        make(chan error, 1),
 		initialOffset: sarama.OffsetOldest,
 	}
@@ -182,98 +182,110 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 	}
 
 	kafkaClient.client = client
-	kafkaClient.singleConsumer = &consumer
+	kafkaClient.singleConsumer = consumer
 
 	return kafkaClient, nil
 }
 
-func routeMsg(c *KafkaConsumer, msgs <-chan *sarama.ConsumerMessage, rawMessages chan *sarama.ConsumerMessage) {
-	for m := range msgs {
-		rawMessages <- m
-		// ------ Prometheus metrics ---------
-		bytesProcessed.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Add(float64(len(m.Value)))
-		messagesProcessed.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Add(1)
-		offsetMetrics.
-			WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
-			Set(float64(m.Offset))
-		// Only auto mark offset when automark is enabled and it's a group consumer
-		if c.autoMark && c.groupConsumer != nil {
-			c.groupConsumer.MarkOffset(m, "")
+func (c *KafkaConsumer) transformMessages(ctx context.Context, messages <-chan *sarama.ConsumerMessage, errc <-chan error) chan messaging.Event {
+	events := make(chan messaging.Event)
+	// cache this event channel for clean up
+	c.eventChans[events] = true
+
+	go func() {
+		defer close(events)
+		for {
+			select {
+			case err := <-errc:
+				if err != nil {
+					c.errors <- err
+				}
+				return
+
+			case m, ok := <-messages:
+				if !ok {
+					return
+				}
+				// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
+				events <- &event{
+					&Message{
+						Key:       m.Key,
+						Value:     m.Value,
+						Offset:    m.Offset,
+						Partition: m.Partition,
+						Time:      m.Timestamp,
+						Topic:     m.Topic,
+					},
+				}
+
+				// ------ Prometheus metrics ---------
+				bytesProcessed.
+					WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+					Add(float64(len(m.Value)))
+				messagesProcessed.
+					WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+					Add(1)
+				offsetMetrics.
+					WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+					Set(float64(m.Offset))
+
+				// Only auto mark offset when automark is enabled and it's a group consumer
+				if c.autoMark && c.groupConsumer != nil {
+					c.groupConsumer.MarkOffset(m, "")
+				}
+
+			case <-ctx.Done():
+				c.errors <- ctx.Err()
+				return
+			}
 		}
-	}
+	}()
+
+	return events
 }
 
-func constructConsumerMsg(ctx context.Context, rawMessages chan *sarama.ConsumerMessage, messages chan messaging.Event, errors chan error) {
-ConsumerLoop:
-	for {
-		select {
-		case m, ok := <-rawMessages:
-			if !ok {
-				break ConsumerLoop
-			}
-			// lagMetrics.WithLabelValues(s.Topic, "consumer", s.Partition).Set(float64(s.Lag))
-			messages <- &event{
-				&Message{
-					Key:       m.Key,
-					Value:     m.Value,
-					Offset:    m.Offset,
-					Partition: m.Partition,
-					Time:      m.Timestamp,
-					Topic:     m.Topic,
-				},
-			}
-		case <-ctx.Done():
-			errors <- ctx.Err()
-			break ConsumerLoop
-		}
-	}
-	close(messages)
-}
-
-func (c *KafkaConsumer) processSingleConsumer(rawMessages chan *sarama.ConsumerMessage, offset int64) error {
-	pConsumer, err := (*c.singleConsumer).ConsumePartition(c.topic, c.partition, offset)
+func (c *KafkaConsumer) processSingleConsumer(ctx context.Context, offset int64) (<-chan messaging.Event, error) {
+	pConsumer, err := c.singleConsumer.ConsumePartition(c.topic, c.partition, offset)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// cache open consumer to properly clean up later
 	c.partitionConsumer = pConsumer
-	// forward messages
-	go routeMsg(c, pConsumer.Messages(), rawMessages)
+	errc := make(chan error, 1)
+
 	// forward errors
 	go func(errs <-chan *sarama.ConsumerError) {
+		defer close(errc)
 		for e := range errs {
-			c.errors <- e.Err
+			errc <- e.Err
 			// ------ Prometheus metrics ---------
 			errorsCount.
 				WithLabelValues(e.Topic, "consumer", "", strconv.Itoa(int(e.Partition))).
 				Add(1)
-			close(rawMessages)
 			break
 		}
 	}(pConsumer.Errors())
 
-	return nil
+	return c.transformMessages(ctx, pConsumer.Messages(), errc), nil
 }
 
-func (c *KafkaConsumer) processGroupConsumer(rawMessages chan *sarama.ConsumerMessage) {
-	// forward messages
-	go routeMsg(c, c.groupConsumer.Messages(), rawMessages)
+func (c *KafkaConsumer) processGroupConsumer(ctx context.Context) (<-chan messaging.Event, error) {
+	errc := make(chan error, 1)
+
 	// forward errors
 	go func(errs <-chan error) {
+		defer close(errc)
 		for e := range errs {
-			c.errors <- e
+			errc <- e
 			// ------ Prometheus metrics ---------
 			errorsCount.
 				WithLabelValues(c.groupID, "consumer", c.groupID, "").
 				Add(1)
-			close(rawMessages)
 			break
 		}
 	}(c.groupConsumer.Errors())
+
+	return c.transformMessages(ctx, c.groupConsumer.Messages(), errc), nil
 }
 
 func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreator) (<-chan messaging.Event, error) {
@@ -281,22 +293,12 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 	if !ok {
 		return nil, errors.New("invalid option creator, did you use NewConsumerOption or ConsumerGroupOption?")
 	}
-	messages := make(chan messaging.Event, 1)
-	rawMessages := make(chan *sarama.ConsumerMessage, 1)
-	// cache this event channel for clean up
-	c.eventChans[rawMessages] = true
 
 	if c.singleConsumer != nil {
-		err := c.processSingleConsumer(rawMessages, options.Offset)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		c.processGroupConsumer(rawMessages)
+		return c.processSingleConsumer(ctx, options.Offset)
 	}
 
-	go constructConsumerMsg(ctx, rawMessages, messages, c.errors)
-	return messages, nil
+	return c.processGroupConsumer(ctx)
 }
 
 func (c *KafkaConsumer) Close() error {
@@ -327,7 +329,7 @@ func (c *KafkaConsumer) Close() error {
 	}
 
 	if c.singleConsumer != nil {
-		if err := (*c.singleConsumer).Close(); err != nil {
+		if err := c.singleConsumer.Close(); err != nil {
 			errorStrs = append(errorStrs, err.Error())
 		}
 	} else {
@@ -342,10 +344,17 @@ func (c *KafkaConsumer) Close() error {
 	if err := c.client.Close(); err != nil {
 		errorStrs = append(errorStrs, err.Error())
 	}
-	close(c.errors)
-	// drains all errors and return them.
-	for errs := range c.errors {
-		errorStrs = append(errorStrs, errs.Error())
+
+	// drains all errors and return them - don't close errors chan because this causes a panic when goroutines try to send on it
+	for {
+		select {
+		case err := <-c.errors:
+			errorStrs = append(errorStrs, err.Error())
+			continue
+		default:
+		}
+
+		break
 	}
 	// close all event channels, client should be able to escape
 	// out of a range loop on the event channel
