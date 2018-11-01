@@ -320,6 +320,15 @@ type PartitionInfoContainer struct {
 }
 
 func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
+	var err error
+
+	requestMetric := &requestMetric{
+		method:    "CreateTopics",
+		startTime: time.Now(),
+		err:       &err,
+	}
+	defer requestMetric.emit()
+
 	v, ok := opts.Options().(CreateTopicOptions)
 	if !ok {
 		return errors.New("incompatible options, did you use CreateTopicOptions?")
@@ -358,12 +367,22 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 		}
 	}
 	if buf.Len() > 0 {
-		return errors.New(buf.String())
+		err = errors.New(buf.String())
+		return err
 	}
+
 	return nil
 }
 
 func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
+	var err error
+	requestMetric := &requestMetric{
+		method:    "DeleteTopics",
+		startTime: time.Now(),
+		err:       &err,
+	}
+	defer requestMetric.emit()
+
 	controllerBroker, err := m.single.Controller()
 	if err != nil {
 		return err
@@ -385,7 +404,8 @@ func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 			}
 		}
 		if buf.Len() > 0 {
-			return errors.New(buf.String())
+			err = errors.New(buf.String())
+			return err
 		}
 	}
 	return nil
