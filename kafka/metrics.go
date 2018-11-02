@@ -1,6 +1,8 @@
 package kafka
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -11,6 +13,14 @@ var (
 
 	offsetMetrics *prometheus.GaugeVec
 	lagMetrics    *prometheus.GaugeVec
+
+	adminLatency *prometheus.GaugeVec
+	adminErr     *prometheus.CounterVec
+)
+
+const (
+	adminMethodLabel = "method"
+	adminErrLabel    = "error"
 )
 
 func init() {
@@ -51,5 +61,36 @@ func init() {
 		[]string{"topic", "type", "group", "partition"},
 	)
 
-	prometheus.MustRegister(bytesProcessed, messagesProcessed, errorsCount, offsetMetrics, lagMetrics)
+	adminLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "kafka_admin_latency",
+			Help: "Admin request latency",
+		},
+		[]string{adminMethodLabel},
+	)
+
+	adminErr = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kafka_admin_error",
+			Help: "Admin error count",
+		},
+		[]string{adminMethodLabel, adminErrLabel},
+	)
+
+	prometheus.MustRegister(bytesProcessed, messagesProcessed, errorsCount, offsetMetrics, lagMetrics, adminLatency, adminErr)
+}
+
+// describes metric info to emit
+type requestMetric struct {
+	method    string
+	startTime time.Time
+	err       *error
+}
+
+func (metricObj *requestMetric) emit() {
+	adminLatency.WithLabelValues(metricObj.method).Set(float64(time.Now().Sub(metricObj.startTime) / time.Millisecond))
+
+	if *metricObj.err != nil {
+		adminErr.WithLabelValues(metricObj.method, (*metricObj.err).Error()).Inc()
+	}
 }

@@ -23,14 +23,14 @@ type KafkaManager struct {
 // Manager creates a simple Kafka Manager with default config to perform administrative tasks
 func Manager(hosts ...string) (*KafkaManager, error) {
 	c := sarama.NewConfig()
-	c.Admin.Timeout = 15 * time.Second
+	c.Admin.Timeout = 30 * time.Second
 
 	// default version
 	c.Version = sarama.V1_1_0_0
 
 	clusterC := cluster.NewConfig()
 	clusterC.Version = sarama.V1_1_0_0
-	clusterC.Admin.Timeout = 15 * time.Second
+	clusterC.Admin.Timeout = 30 * time.Second
 
 	s, err := sarama.NewClient(hosts, c)
 	if err != nil {
@@ -51,7 +51,7 @@ func Manager(hosts ...string) (*KafkaManager, error) {
 	return &KafkaManager{
 		single:          s,
 		multi:           *m,
-		timeOutDuration: 15 * time.Second,
+		timeOutDuration: 30 * time.Second,
 	}, nil
 }
 
@@ -320,14 +320,27 @@ type PartitionInfoContainer struct {
 }
 
 func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCreator, topics ...string) error {
+	var err error
+
+	requestMetric := &requestMetric{
+		method:    "CreateTopics",
+		startTime: time.Now(),
+		err:       &err,
+	}
+	defer requestMetric.emit()
+
 	v, ok := opts.Options().(CreateTopicOptions)
 	if !ok {
 		return errors.New("incompatible options, did you use CreateTopicOptions?")
 	}
 
 	t := &sarama.CreateTopicsRequest{}
-	t.Timeout = m.timeOutDuration
-	t.Version = 1
+	if v.Timeout == time.Duration(0) {
+		v.Timeout = m.timeOutDuration
+	}
+	t.Timeout = v.Timeout
+
+	t.Version = 2
 	t.TopicDetails = make(map[string]*sarama.TopicDetail)
 	for _, topic := range topics {
 		t.TopicDetails[topic] = &sarama.TopicDetail{
@@ -354,12 +367,22 @@ func (m *KafkaManager) CreateTopics(_ context.Context, opts messaging.OptionCrea
 		}
 	}
 	if buf.Len() > 0 {
-		return errors.New(buf.String())
+		err = errors.New(buf.String())
+		return err
 	}
+
 	return nil
 }
 
 func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
+	var err error
+	requestMetric := &requestMetric{
+		method:    "DeleteTopics",
+		startTime: time.Now(),
+		err:       &err,
+	}
+	defer requestMetric.emit()
+
 	controllerBroker, err := m.single.Controller()
 	if err != nil {
 		return err
@@ -381,7 +404,8 @@ func (m *KafkaManager) DeleteTopics(_ context.Context, topics ...string) error {
 			}
 		}
 		if buf.Len() > 0 {
-			return errors.New(buf.String())
+			err = errors.New(buf.String())
+			return err
 		}
 	}
 	return nil
@@ -544,6 +568,7 @@ type CreateTopicOptions struct {
 	ReplicationFactor int16
 	ReplicaAssignment map[int32][]int32
 	ConfigEntries     map[string]*string
+	Timeout           time.Duration
 }
 
 // Options returns the compatible options for creating topics
