@@ -27,6 +27,32 @@ func init() {
 	metrics.UseNilMetrics = true
 }
 
+// GetDefaultConfig returns default specific config
+func GetDefaultConfig() (*sarama.Config, *cluster.Config) {
+	conf := sarama.NewConfig()
+	conf.Version = sarama.V1_1_0_0
+	conf.ClientID = "go-messaging-lib"
+
+	conf.Metadata.Retry.Max = 5
+	conf.Metadata.Retry.Backoff = 1 * time.Second
+
+	conf.Consumer.Return.Errors = true
+	conf.Consumer.Retry.Backoff = 1 * time.Second
+	conf.Consumer.Offsets.Retry.Max = 5
+
+	conf.Producer.Retry.Max = 5
+	conf.Producer.Retry.Backoff = 1 * time.Second
+	conf.Producer.Return.Errors = true
+	conf.Producer.Return.Successes = true
+
+	conf.Admin.Timeout = 30 * time.Second // Not used
+
+	clusConf := cluster.NewConfig()
+	clusConf.Config = *conf
+
+	return conf, clusConf
+}
+
 type KafkaConsumer struct {
 	*sync.Mutex
 
@@ -112,13 +138,7 @@ func NewConsumer(topic, groupID string, opts ...ClientOption) (*KafkaConsumer, e
 		return nil, errors.New("Initial offset must be -1 or -2")
 	}
 
-	conf := cluster.NewConfig()
-	conf.Version = sarama.V1_1_0_0
-	conf.Consumer.Return.Errors = true
-	conf.Consumer.Retry.Backoff = 1 * time.Second
-	conf.Consumer.Offsets.Retry.Max = 5
-	conf.Metadata.Retry.Max = 5
-	conf.Metadata.Retry.Backoff = 1 * time.Second
+	_, conf := GetDefaultConfig()
 
 	// This is necessary to read messages on newly created topics
 	// before a consumer started listening
@@ -163,14 +183,7 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 		return nil, errors.New("Initial offset must be -1 or -2")
 	}
 
-	conf := sarama.NewConfig()
-	conf.Version = sarama.V1_1_0_0
-	conf.Consumer.Return.Errors = true
-	conf.Consumer.Retry.Backoff = 1 * time.Second
-	conf.Consumer.Offsets.Retry.Max = 5
-	conf.Consumer.Offsets.Initial = kafkaClient.initialOffset
-	conf.Metadata.Retry.Max = 5
-	conf.Metadata.Retry.Backoff = 1 * time.Second
+	conf, _ := GetDefaultConfig()
 
 	client, err := sarama.NewClient(kafkaClient.brokers, conf)
 	if err != nil {

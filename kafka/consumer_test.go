@@ -15,6 +15,14 @@ import (
 	"github.com/veritone/go-messaging-lib/kafka"
 )
 
+func TestDefaultConfig(t *testing.T) {
+	saramaConfig, clusterConfig := kafka.GetDefaultConfig()
+	assert.Equal(t, 5, saramaConfig.Metadata.Retry.Max)
+
+	assert.Equal(t, 5, clusterConfig.Metadata.Retry.Max)
+	assert.Equal(t, 3, clusterConfig.Group.Offsets.Retry.Max)
+}
+
 func Test_consumers(t *testing.T) {
 	kafka.SetLogger(log.New(os.Stdout, "[sarama] ", log.LstdFlags))
 	multiBrokerSetup(t)
