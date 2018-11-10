@@ -9,6 +9,7 @@ import (
 var (
 	bytesProcessed    *prometheus.CounterVec
 	messagesProcessed *prometheus.CounterVec
+	messagesMarked    *prometheus.CounterVec
 	errorsCount       *prometheus.CounterVec
 
 	offsetMetrics *prometheus.GaugeVec
@@ -35,6 +36,13 @@ func init() {
 		prometheus.CounterOpts{
 			Name: "kafka_messages_total",
 			Help: "How many messages processed, partitioned by topic, type (consumer/writer), groupId, and partition.",
+		},
+		[]string{"topic", "type", "group", "partition"},
+	)
+	messagesMarked = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kafka_messages_marked",
+			Help: "How many messages marked, partitioned by topic, type (consumer/writer), groupId, and partition.",
 		},
 		[]string{"topic", "type", "group", "partition"},
 	)
