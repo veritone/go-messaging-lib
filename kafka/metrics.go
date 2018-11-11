@@ -85,7 +85,7 @@ func init() {
 		[]string{adminMethodLabel, adminErrLabel},
 	)
 
-	prometheus.MustRegister(bytesProcessed, messagesProcessed, errorsCount, offsetMetrics, lagMetrics, adminLatency, adminErr)
+	prometheus.MustRegister(bytesProcessed, messagesProcessed, messagesMarked, errorsCount, offsetMetrics, lagMetrics, adminLatency, adminErr)
 }
 
 // describes metric info to emit
