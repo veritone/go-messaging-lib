@@ -105,6 +105,9 @@ func (consumer *KafkaConsumer) MarkOffset(msg messaging.Event, metadata string) 
 		return fmt.Errorf("Error converting from msg to sarama message format: %s", err)
 	}
 	consumer.groupConsumer.MarkOffset(&obj, metadata)
+	messagesMarked.
+		WithLabelValues(obj.Topic, "consumer", consumer.groupID, strconv.Itoa(int(obj.Partition))).
+		Inc()
 	return nil
 }
 
@@ -245,6 +248,9 @@ func (c *KafkaConsumer) transformMessages(ctx context.Context, messages <-chan *
 				// Only auto mark offset when automark is enabled and it's a group consumer
 				if c.autoMark && c.groupConsumer != nil {
 					c.groupConsumer.MarkOffset(m, "")
+					messagesMarked.
+						WithLabelValues(m.Topic, "consumer", c.groupID, strconv.Itoa(int(m.Partition))).
+						Inc()
 				}
 
 			case <-ctx.Done():
