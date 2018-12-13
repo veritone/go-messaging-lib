@@ -140,13 +140,17 @@ func (m *KafkaManager) ListTopicsLite(_ context.Context) ([]string, []string, er
 		err := connectBroker(b, m.single.Config())
 		if err != nil {
 			log.Printf("Error connecting to broker (id: %d)", b.ID())
+			b.Close()
 			continue
 		}
 		// Get all groups managed by current broker
 		res, err := b.ListGroups(&sarama.ListGroupsRequest{})
 		if err != nil {
+			b.Close()
 			return nil, nil, err
 		}
+		b.Close()
+
 		for k, v := range res.Groups {
 			if _, exist := groupMap[k]; exist {
 				continue
