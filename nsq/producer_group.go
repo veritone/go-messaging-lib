@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	messaging "github.com/veritone/go-messaging-lib"
-	"go.uber.org/zap"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -70,13 +69,11 @@ func NewProducerGroup(config *Config) (*NsqProducerGroup, error) {
 		if err != nil {
 			continue
 		}
-		ProducerGroup.nsqProducers = append(ProducerGroup.nsqProducers, p)
+		producers = append(producers, p)
 	}
 
 	if len(producers) == 0 {
-		if len(config.Nsqlookupds) == 0 {
-			return nil, errors.New("cannot connect to any nsqd")
-		}
+		return nil, errors.New("cannot connect to any nsqd")
 	}
 
 	return &NsqProducerGroup{
@@ -87,8 +84,12 @@ func NewProducerGroup(config *Config) (*NsqProducerGroup, error) {
 }
 
 func (p *NsqProducerGroup) Produce(ctx context.Context, m messaging.Messager, from ...messaging.Event) error {
-	nsqd := p.nsqProducers[rand.Intn(len(p.nsqProducers))]
-	err := nsqd.Produce(ctx, m)
+	if len(p.nsqProducers) == 0 {
+		return errors.New("producer group not connected to any nsqd")
+	}
+	rand := rand.Intn(len(p.nsqProducers))
+	nsqd := p.nsqProducers[rand]
+	err := nsqd.Produce(ctx, m, from...)
 	return err
 }
 
@@ -101,21 +102,17 @@ func (p *NsqProducerGroup) Close() error {
 
 func (p *NsqProducerGroup) queryLookupd(Nsqlookupds []string) []string {
 	retries := 0
-	i := 0
 retry:
 	var data lookupResp
-	for ; i < len(Nsqlookupds); i++ {
-		endpoint := Nsqlookupds[i]
-		err := apiRequestNegotiate("GET", endpoint, nil, &data)
-		if err != nil {
-			p.Error("error querying nsqlookupd ", zap.ByteString("endpoint", endpoint))
-			retries++
-			if retries < 3 {
-				p.Info("retrying with next nsqlookupd")
-				goto retry
-			}
-			return []string{}
+	endpoint := Nsqlookupds[retries]
+	err := apiRequestNegotiate("GET", "http://"+endpoint+"/nodes", nil, &data)
+	if err != nil {
+		retries++
+		if retries < len(Nsqlookupds) {
+			p.Info("retrying with next nsqlookupd")
+			goto retry
 		}
+		return []string{}
 	}
 
 	var nsqdAddrs []string
