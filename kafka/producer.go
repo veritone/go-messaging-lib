@@ -100,9 +100,11 @@ func (p *producer) Produce(_ context.Context, msg messaging.Messager, _ ...messa
 	case err = <-p.asyncProducer.Errors():
 		break
 	}
-	
+
 	kafkaMsg.Partition = saramaMsg.Partition
 	kafkaMsg.Offset = saramaMsg.Offset
+	kafkaMsg.Topic = saramaMsg.Topic
+
 	return err
 }
 
