@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -362,10 +361,7 @@ func (c *KafkaConsumer) Close() error {
 	}
 
 	if len(errorStrs) > 0 {
-		return fmt.Errorf(
-			"(%d) errors while consuming: %s",
-			len(errorStrs),
-			strings.Join(errorStrs, "\n"))
+		return fmt.Errorf("%d error(s) while consuming from %q: %v", len(errorStrs), c.topic, errorStrs)
 	}
 	return nil
 }
