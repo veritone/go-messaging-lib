@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/bsm/sarama-cluster"
+	cluster "github.com/bsm/sarama-cluster"
 	"github.com/mitchellh/mapstructure"
-	"github.com/rcrowley/go-metrics"
+	metrics "github.com/rcrowley/go-metrics"
 	messaging "github.com/veritone/go-messaging-lib"
 )
 
@@ -169,7 +169,6 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 		groupID:       "",
 		topic:         topic,
 		partition:     int32(partition),
-		eventChans:    make(map[chan messaging.Event]bool),
 		errors:        make(chan error, 1),
 		initialOffset: sarama.OffsetOldest,
 	}
@@ -205,8 +204,6 @@ func NewConsumerFromPartition(topic string, partition int, opts ...ClientOption)
 
 func (c *KafkaConsumer) transformMessages(ctx context.Context, messages <-chan *sarama.ConsumerMessage, errc <-chan error) chan messaging.Event {
 	events := make(chan messaging.Event)
-	// cache this event channel for clean up
-	c.eventChans[events] = true
 
 	go func() {
 		defer close(events)
@@ -323,19 +320,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, opts messaging.OptionCreato
 func (c *KafkaConsumer) Close() error {
 	c.Lock()
 	defer c.Unlock()
-	defer func() error {
-		// Sarama panics when closing already closed Kafka clients.
-		// This is not a fatal condition that warrants panicking.
-		// Recover and rethrow a normal error so clients can act appropriately,
-		// most likely print an error message then ignore.
-		// There could be other conditions where Sarama panics. However the idea is
-		// to let clients decide how to handle those situations instead of crashing
-		// whole application.
-		if r := recover(); r != nil {
-			return fmt.Errorf("Recovered from panic: %v", r)
-		}
-		return nil
-	}()
+
 	var errorStrs []string
 	if c.partitionConsumer != nil {
 		if err := c.partitionConsumer.Close(); err != nil {
@@ -375,11 +360,7 @@ func (c *KafkaConsumer) Close() error {
 
 		break
 	}
-	// close all event channels, client should be able to escape
-	// out of a range loop on the event channel
-	for msgChan := range c.eventChans {
-		close(msgChan)
-	}
+
 	if len(errorStrs) > 0 {
 		return fmt.Errorf(
 			"(%d) errors while consuming: %s",
