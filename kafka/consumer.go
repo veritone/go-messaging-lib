@@ -292,6 +292,7 @@ func (c *KafkaConsumer) processGroupConsumer(ctx context.Context) (<-chan messag
 		defer close(errc)
 		for e := range errs {
 			errc <- e
+			log.Printf("kafka error: %s", e)
 			// ------ Prometheus metrics ---------
 			errorsCount.
 				WithLabelValues(c.groupID, "consumer", c.groupID, "").
