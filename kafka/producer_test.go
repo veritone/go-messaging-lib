@@ -18,6 +18,7 @@ func Test_producer_integration(t *testing.T) {
 	//testProducer(t, "t2", kafka.StrategyLeastBytes) // test with LeastBytes
 	testProducer(t, "t3", kafka.StrategyRoundRobin) // test with Round Robin
 	testProducer(t, "t1", kafka.StrategyRoundRobin) // test on existing topic
+	testProducer(t, "t1", kafka.StrategyHashMurmur2)
 
 }
 

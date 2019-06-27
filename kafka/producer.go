@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"strings"
 	"sync"
 
 	"github.com/Shopify/sarama"
+	"github.com/aviddiviner/go-murmur"
 	"github.com/davecgh/go-spew/spew"
 	messaging "github.com/veritone/go-messaging-lib"
 )
@@ -31,6 +33,9 @@ const (
 	// StrategyHash distributes writes based on 32-bit FNV-1 Hash function. This
 	// guarantees messages with the same key are routed to the same host
 	StrategyHash Strategy = "Hash"
+	// Uses the same strategy for assigning partitions as the java client
+	//https://github.com/apache/kafka/blob/0.8.2/clients/src/main/java/org/apache/kafka/common/utils/Utils.java#L244
+	StrategyHashMurmur2 Strategy = "HashMurmur2"
 )
 
 // Producer initializes a default producer client for publishing messages
@@ -43,6 +48,10 @@ func Producer(topic string, strategy Strategy, brokers ...string) (messaging.Pro
 		balancer = sarama.NewRoundRobinPartitioner
 	case StrategyLeastBytes:
 		return nil, errors.New("balancer is not available")
+	case StrategyHashMurmur2:
+		//https://github.com/apache/kafka/blob/0.8.2/clients/src/main/java/org/apache/kafka/common/utils/Utils.java#L246
+		seed := uint32(0x9747b28c)
+		balancer = sarama.NewCustomHashPartitioner(func() hash.Hash32 { return murmur.New32(seed) })
 	default:
 		balancer = sarama.NewHashPartitioner
 	}
