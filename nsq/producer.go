@@ -3,12 +3,11 @@ package nsq
 import (
 	"context"
 	"fmt"
-
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/protobuf/proto"
 	gnsq "github.com/nsqio/go-nsq"
 	"github.com/veritone/core-messages/generated/go/events"
-	messaging "github.com/veritone/go-messaging-lib"
+	"github.com/veritone/go-messaging-lib"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +22,39 @@ type NsqProducer struct {
 func NewProducer(config *Config) (*NsqProducer, error) {
 	conf := gnsq.NewConfig()
 	conf.MaxInFlight = config.MaxInFlight
+	conf.TlsV1 = config.TLS
+	if config.TLS {
+		// Using set instead of creating a new tls.Config because of complex handling of each property
+		// See: https://github.com/nsqio/go-nsq/blob/master/config.go#L401
+		if err := conf.Set("tls_insecure_skip_verify", !config.TLSVerification); err != nil {
+			return nil, err
+		}
+
+		if config.TLSRootCAFile != nil {
+			if err := conf.Set("tls_root_ca_file", config.TLSRootCAFile); err != nil {
+				return nil, err
+			}
+		}
+
+		if config.TLSCert != nil {
+			if err := conf.Set("tls_cert", config.TLSCert); err != nil {
+				return nil, err
+			}
+
+		}
+
+		if config.TLSKey != nil {
+			if err := conf.Set("tls_key", config.TLSKey); err != nil {
+				return nil, err
+			}
+		}
+
+		if config.TLSMinVersion != nil {
+			if err := conf.Set("tls_min_version", config.TLSMinVersion); err != nil {
+				return nil, err
+			}
+		}
+	}
 	p, err := gnsq.NewProducer(config.Nsqd, conf)
 	if err != nil {
 		return nil, err

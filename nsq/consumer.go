@@ -48,6 +48,40 @@ func NewConsumer(topic, channel string, config *Config) (*NsqConsumer, error) {
 			return nil, errors.New("unable to discover nsqlookupds")
 		}
 	}
+
+	if config.TLS {
+		// Using set instead of creating a new tls.Config because of complex handling of each property
+		// See: https://github.com/nsqio/go-nsq/blob/master/config.go#L401
+		if err := conf.Set("tls_insecure_skip_verify", !config.TLSVerification); err != nil {
+			return nil, err
+		}
+
+		if config.TLSRootCAFile != nil {
+			if err := conf.Set("tls_root_ca_file", config.TLSRootCAFile); err != nil {
+				return nil, err
+			}
+		}
+
+		if config.TLSCert != nil {
+			if err := conf.Set("tls_cert", config.TLSCert); err != nil {
+				return nil, err
+			}
+
+		}
+
+		if config.TLSKey != nil {
+			if err := conf.Set("tls_key", config.TLSKey); err != nil {
+				return nil, err
+			}
+		}
+
+		if config.TLSMinVersion != nil {
+			if err := conf.Set("tls_min_version", config.TLSMinVersion); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return &NsqConsumer{
 		nsqc:        c,
 		nsqds:       []string{config.Nsqd},
