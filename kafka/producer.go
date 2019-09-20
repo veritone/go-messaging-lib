@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/Shopify/sarama"
-	"github.com/aviddiviner/go-murmur"
+	murmur "github.com/aviddiviner/go-murmur"
 	"github.com/davecgh/go-spew/spew"
 	messaging "github.com/veritone/go-messaging-lib"
 )
@@ -36,6 +36,8 @@ const (
 	// Uses the same strategy for assigning partitions as the java client
 	//https://github.com/apache/kafka/blob/0.8.2/clients/src/main/java/org/apache/kafka/common/utils/Utils.java#L244
 	StrategyHashMurmur2 Strategy = "HashMurmur2"
+	// StrategyManual Produce a message to a partition
+	StrategyManual Strategy = "Manual"
 )
 
 // Producer initializes a default producer client for publishing messages
@@ -52,6 +54,8 @@ func Producer(topic string, strategy Strategy, brokers ...string) (messaging.Pro
 		//https://github.com/apache/kafka/blob/0.8.2/clients/src/main/java/org/apache/kafka/common/utils/Utils.java#L246
 		seed := uint32(0x9747b28c)
 		balancer = sarama.NewCustomHashPartitioner(func() hash.Hash32 { return murmur.New32(seed) })
+	case StrategyManual:
+		balancer = sarama.NewManualPartitioner
 	default:
 		balancer = sarama.NewHashPartitioner
 	}
@@ -102,6 +106,35 @@ func (p *producer) Produce(_ context.Context, msg messaging.Messager, _ ...messa
 		Key:   sarama.ByteEncoder(kafkaMsg.Key),
 		Value: sarama.ByteEncoder(kafkaMsg.Value),
 	}
+
+	p.asyncProducer.Input() <- saramaMsg
+	select {
+	case <-p.asyncProducer.Successes():
+		break
+	case err = <-p.asyncProducer.Errors():
+		break
+	}
+
+	kafkaMsg.Partition = saramaMsg.Partition
+	kafkaMsg.Offset = saramaMsg.Offset
+	kafkaMsg.Topic = saramaMsg.Topic
+
+	return err
+}
+
+func (p *producer) ProduceManualPartition(_ context.Context, msg messaging.Messager, partition int32, _ ...messaging.Event) error {
+	kafkaMsg, ok := msg.Message().(*Message)
+	if !ok {
+		return fmt.Errorf("unsupported Kafka message: %s", spew.Sprint(msg))
+	}
+	var err error
+	saramaMsg := &sarama.ProducerMessage{
+		Topic:     p.topic,
+		Partition: partition,
+		Key:       sarama.ByteEncoder(kafkaMsg.Key),
+		Value:     sarama.ByteEncoder(kafkaMsg.Value),
+	}
+
 	p.asyncProducer.Input() <- saramaMsg
 	select {
 	case <-p.asyncProducer.Successes():
