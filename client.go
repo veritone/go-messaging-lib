@@ -16,6 +16,7 @@ type Manager interface {
 // Producer defines functions of a producer/publisher
 type Producer interface {
 	Produce(context.Context, Messager, ...Event) error
+	ProduceManualPartition(context.Context, Messager, int32, ...Event) error
 	io.Closer
 }
 
